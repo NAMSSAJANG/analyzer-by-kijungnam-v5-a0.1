@@ -64,6 +64,7 @@ st.markdown("""
 [data-testid="stMetricLabel"]{color:#cbd5e1} [data-testid="stExpander"]{border-color:#29415e;background:#0a1728}
 [data-testid="stAlert"]{border-radius:12px} div[data-testid="stPlotlyChart"]{overflow:hidden}
 @media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide,.brief-card.matched{height:auto;min-height:0}.scenario{height:auto;min-height:130px}}
+@media(min-width:901px){div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]){align-items:stretch}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]{display:flex}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]>div{width:100%}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stAlert"]{box-sizing:border-box;height:100%}}
 @media(max-width:700px){
 html,body,#root{
   height:auto!important;min-height:100%!important;overflow:visible!important;background:#07111f!important

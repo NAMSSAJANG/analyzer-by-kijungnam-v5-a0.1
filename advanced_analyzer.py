@@ -170,6 +170,8 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
     with c2:
         st.subheader("진입 타이밍"); _bar_card("현재 진입 여건",entry_score,"Entry Engine v2의 6개 공통 요소를 반영합니다.",color_fn,"ENTRY V2")
         st.markdown(f"**기본 판정:** {decision['base']}  \n**최종 판정:** {decision['final']}")
+        st.caption("기본 판정 · 진입 적합도 점수 구간으로 산정한 1차 결과")
+        st.caption("최종 판정 · 과열, 가격 위치, 거래량, 시장환경, 손실 허용폭과 실적 일정을 반영해 보정한 결과")
     if decision["risks"]:
         left,right=st.columns(2)
         with left: st.warning("**판정을 낮춘 위험 조건**\n\n"+"\n\n".join(f"• {x}" for x in decision["risks"]))
@@ -247,5 +249,4 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
         for title,summary,url in rows[:5]:
             st.markdown(f"[{title}]({url})" if url else title); st.caption(summary[:180] if summary else "제목 기반 참고 뉴스")
     st.warning("기관 수급·컨센서스·공매도·한국 공시는 무료 Yahoo 데이터에서 누락될 수 있습니다. 없는 데이터는 임의 추정하지 않으며, DART 정식 공시는 별도 API 키 연동이 필요합니다.")
-
 
