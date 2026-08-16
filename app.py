@@ -145,13 +145,23 @@ def prices(symbol: str, period="2y", interval="1d"):
     return d.dropna(how="all")
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def fred_yield(series_id: str) -> pd.Series:
-    """FRED constant-maturity Treasury yield; no API key required for graph CSV."""
-    url=f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-    response=requests.get(url,timeout=12,headers={"User-Agent":"StockAnalyzer/5"}); response.raise_for_status()
+def fred_yields() -> pd.DataFrame:
+    """Fetch all Treasury maturities in one short FRED request.
+
+    Streamlit Cloud can occasionally delay or block FRED.  A single request keeps
+    that failure bounded instead of waiting once for every maturity.
+    """
+    series_ids=("DGS2","DGS5","DGS10","DGS30")
+    url=f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={','.join(series_ids)}"
+    response=requests.get(url,timeout=5,headers={"User-Agent":"StockAnalyzer/5"}); response.raise_for_status()
     frame=pd.read_csv(StringIO(response.text))
-    values=pd.to_numeric(frame[series_id],errors="coerce")
-    return pd.Series(values.values,index=pd.to_datetime(frame["observation_date"]),name=series_id).dropna()
+    date_column="observation_date" if "observation_date" in frame.columns else "DATE"
+    if date_column not in frame.columns: raise ValueError("FRED date column is missing")
+    frame[date_column]=pd.to_datetime(frame[date_column],errors="coerce")
+    for series_id in series_ids:
+        if series_id not in frame.columns: frame[series_id]=np.nan
+        frame[series_id]=pd.to_numeric(frame[series_id],errors="coerce")
+    return frame.set_index(date_column)[list(series_ids)].dropna(how="all")
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def info(symbol):
@@ -317,12 +327,20 @@ def render_market_dashboard():
             for col,(n,s) in zip(cols,items[i:i+4]):
                 with col: pulse_card(n,s)
     with st.expander("금리 · 신용시장 보조 패널"):
+        st.caption("미 국채 금리는 FRED의 최근 거래일 자료이며, HYG·LQD는 신용시장의 위험 선호를 보조적으로 보여줍니다.")
         cols=st.columns(4); last={}
+        try:
+            treasury=fred_yields()
+            rate_note=""
+        except Exception:
+            treasury=pd.DataFrame()
+            rate_note="FRED 연결이 지연되어 국채 금리는 N/A로 표시합니다. HYG·LQD는 별도로 계속 불러옵니다."
         for name,series_id,col in zip(("US 2Y","US 5Y","US 10Y","US 30Y"),("DGS2","DGS5","DGS10","DGS30"),cols):
             try:
-                d=fred_yield(series_id); v=float(d.iloc[-1]); change=v-float(d.iloc[-2]); last[name]=v
+                d=treasury[series_id].dropna(); v=float(d.iloc[-1]); change=v-float(d.iloc[-2]); last[name]=v
                 col.metric(name,f"{v:.2f}%",f"{change:+.2f}%p"); col.caption(RATE_GUIDE[name])
             except Exception: col.metric(name,"N/A"); col.caption(RATE_GUIDE[name])
+        if rate_note: st.caption(f"※ {rate_note}")
         cols=st.columns(4)
         for name,symbol_name,col in (("HYG","HYG",cols[0]),("LQD","LQD",cols[1])):
             try:
