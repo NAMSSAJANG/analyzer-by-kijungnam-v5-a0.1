@@ -9,6 +9,9 @@
 - 기술적 지지·저항과 옵션 Strike의 Confluence/Divergence
 - 옵션 미지원 및 결측 종목은 N/A로 제외해 Consensus 분모 왜곡 방지
 - 교체 가능한 `JsonScoreHistory` 저장 어댑터로 향후 PostgreSQL/Supabase 이전 가능
+- 종합·퀀트가 공유하는 Entry Engine v2: Trend, Price Position, Momentum, Volume/OBV, Volatility, Market
+- Option Entry Readiness: Direction, IV Efficiency, Liquidity, Risk/Reward, Time/DTE를 별도 평가하며 종합점수에는 미반영
+- Bull/Base/Bear 시나리오에 발동 조건·대응 행동·목표·무효화 조건 표시
 
 V4.1의 UI와 종합분석·퀀트분석·시장환경을 유지하면서 옵션분석을 네 번째 메뉴로 추가한 Streamlit 분석 앱입니다.
 

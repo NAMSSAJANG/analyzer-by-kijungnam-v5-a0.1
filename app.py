@@ -15,6 +15,7 @@ import streamlit as st
 import yfinance as yf
 
 from consensus_engine import Lens, build_consensus, confidence_interpretation
+from entry_engine import build_entry_snapshot
 from score_history import JsonScoreHistory, format_trend
 
 st.set_page_config(page_title="Stock Analyzer V5-a0.1", page_icon="📈", layout="wide")
@@ -240,6 +241,17 @@ def trend_sparkline(trend, key):
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
 
+def render_entry_engine(snapshot, key):
+    st.markdown(f"### ENTRY ENGINE V2 · {snapshot.score:.1f} / 100 · {grade(snapshot.score)}")
+    labels={"Trend":"추세","Price Position":"가격 위치","Momentum":"모멘텀","Volume / OBV":"거래량 / OBV","Volatility":"변동성","Market":"시장환경"}
+    rows=[]
+    for name,value in snapshot.factors.items():
+        icon="🟢" if value>=65 else "🟡" if value>=45 else "🔴"
+        rows.append({"요소":labels[name],"점수":round(value,1),"상태":f"{icon} {grade(value)}"})
+    st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
+                 column_config={"점수":st.column_config.ProgressColumn("점수",min_value=0,max_value=100,format="%.1f")},key=key)
+    st.info(snapshot.interpretation)
+
 def briefing(title: str, body: str, kicker="AI BRIEF", wide=False):
     cls="brief-card wide" if wide else "brief-card"
     st.markdown(f"<div class='{cls}'><div class='brief-kicker'>{kicker}</div><h3>{title}</h3><p>{body}</p></div>",unsafe_allow_html=True)
@@ -321,6 +333,7 @@ if symbol:
 analysis = None
 quant_view = None
 option_view = None
+entry_view = None
 analysis_history = HISTORY_STORE.load()
 if symbol:
     try:
@@ -329,6 +342,7 @@ if symbol:
         with st.spinner(f"{symbol}의 분석 관점을 통합하는 중입니다..."):
             analysis = calc(symbol)
             quant_view = quant_snapshot(analysis)
+            entry_view = build_entry_snapshot(analysis, quant_view)
             try:
                 option_view, _, _, _ = get_option_snapshot(symbol, analysis["now"])
             except Exception:
@@ -423,7 +437,8 @@ if symbol and mode=="🎯 퀀트분석":
             st.markdown(format_trend(quant_history_trend))
             trend_sparkline(quant_history_trend, f"quant_5d_sparkline_{symbol}")
             st.caption(f"현재 {quant_view['score']:.1f} {grade(quant_view['score'])} · 추세 {quant_view['trend']:.1f} · 모멘텀 {quant_view['momentum']:.1f} · 수급 {quant_view['supply']:.1f} · 기업품질 {quant_view['quality']:.1f}")
-        render_advanced(symbol,advanced_base,prices,news,money,pct,clamp,grade,score_color)
+        if entry_view: render_entry_engine(entry_view, f"quant_entry_v2_{symbol}")
+        render_advanced(symbol,advanced_base,prices,news,money,pct,clamp,grade,score_color,entry_view)
     except Exception as e: st.error(f"퀀트분석을 표시할 수 없습니다: {e}")
 elif mode=="🎯 퀀트분석":
     st.info("먼저 위 검색창에서 분석할 종목을 선택해 주세요.")
@@ -475,11 +490,13 @@ if symbol and mode=="📊 종합분석":
     st.markdown("<p class='blue'>점수가 50에 가까우면 방향이 불분명하며, 65 이상은 상승 우위, 35 이하는 하락 우위로 해석합니다.</p>",unsafe_allow_html=True)
 
     st.subheader("진입 적합도 · AI 눌림목 전략")
+    if entry_view: render_entry_engine(entry_view, f"overall_entry_v2_{symbol}")
     c1,c2,c3=st.columns(3)
-    with c1:gauge("진입 적합도",a["entry"])
+    entry_score=entry_view.score if entry_view else a["entry"]
+    with c1:gauge("진입 적합도",entry_score)
     lo,hi=a["entry_range"]; stop=max(a["supports"][-1],lo-a["atr"]*1.3); target=max(a["resist"][-1],a["now"]+a["atr"]*2)
     c2.metric("추천 진입가격대",f"{money(lo)} ~ {money(hi)}"); c2.metric("현재 위치",f"추천구간 대비 {(a['now']/((lo+hi)/2)-1)*100:+.1f}%")
-    weight=30 if a['entry']>=65 else 20 if a['entry']>=45 else 10
+    weight=30 if entry_score>=65 else 20 if entry_score>=45 else 10
     c3.metric("추천비중",f"최대 {weight}%"); c3.caption("AI 눌림목: 20일선·ATR·가까운 지지를 결합해 과도한 추격 여부를 평가합니다.")
     plans=pd.DataFrame({"단계":["1차","2차","3차"],"가격":[hi,(lo+hi)/2,lo],"해당 계획 내 비중":["30%","30%","40%"]})
     st.dataframe(plans.style.format({"가격":"{:,.2f}"}),hide_index=True,use_container_width=True)
@@ -488,9 +505,10 @@ if symbol and mode=="📊 종합분석":
 
     st.subheader("대응 시나리오")
     c1,c2,c3=st.columns(3)
-    with c1: st.markdown(f"<div class='scenario up'><h4>상승/돌파</h4><p>{money(a['resist'][0])} 돌파와 거래량 확인 → 목표 {money(target)}</p></div>",unsafe_allow_html=True)
-    with c2: st.markdown(f"<div class='scenario mid'><h4>중립/지지 확인</h4><p>{money(lo)}~{money(hi)} 지지 확인 → 1/2/3차 분할 접근</p></div>",unsafe_allow_html=True)
-    with c3: st.markdown(f"<div class='scenario down'><h4>하락/무효화</h4><p>{money(stop)} 이탈 → 현재 진입 논리 재검토</p></div>",unsafe_allow_html=True)
+    first_target=max(a['resist'][0],a['now']+a['atr']); second_target=target
+    with c1: st.markdown(f"<div class='scenario up'><h4>🟢 Bull · 돌파</h4><p><b>조건</b> {money(a['resist'][0])} 돌파 + 거래량 증가<br><b>대응</b> 돌파 지지 확인 후 접근<br><b>목표</b> {money(first_target)} / {money(second_target)}</p></div>",unsafe_allow_html=True)
+    with c2: st.markdown(f"<div class='scenario mid'><h4>🟡 Base · 박스/지지</h4><p><b>조건</b> {money(lo)}~{money(hi)} 범위 유지<br><b>대응</b> {money((lo+hi)/2)} 이하 지지 시 분할 접근<br><b>주의</b> 박스 중앙 추격 자제</p></div>",unsafe_allow_html=True)
+    with c3: st.markdown(f"<div class='scenario down'><h4>🔴 Bear · 무효화</h4><p><b>조건</b> {money(stop)} 종가 이탈<br><b>대응</b> 추가 진입 중단<br><b>재평가</b> 다음 지지 {money(a['supports'][-1])}</p></div>",unsafe_allow_html=True)
 
     st.subheader("가격 차트 · 지지와 저항")
     d=a['data'].tail(252); fig=go.Figure(go.Candlestick(x=d.index,open=d.Open,high=d.High,low=d.Low,close=d.Close,name="가격"))

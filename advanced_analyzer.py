@@ -65,7 +65,7 @@ def quant_snapshot(a):
     inf = a["inf"]
     quality = _weighted([(a["fundamental"], .65), (_score(_safe(inf.get("revenueGrowth")) * 100, -5, 25), .2), (_score(_safe(inf.get("returnOnEquity")) * 100, 0, 30), .15)])
     score = _weighted([(quality, .55), (m["timing"], .45)])
-    return {"score": score, "quality": quality, "timing": m["timing"], "trend": m["trend"], "momentum": m["momentum"], "supply": m["supply"]}
+    return {"score": score, "quality": quality, "timing": m["timing"], "trend": m["trend"], "momentum": m["momentum"], "supply": m["supply"], "volatility": m["volatility"]}
 
 
 def _bar_card(label,value,description,color_fn,tag="FACTOR"):
@@ -124,8 +124,8 @@ def _entry_label(score):
     return "🔴 진입 회피",4
 
 
-def _entry_decision(symbol,a,m):
-    base,level=_entry_label(m["timing"]); risks=[]; releases=[]; cal,earnings_days=_calendar_data(symbol)
+def _entry_decision(symbol,a,m,entry_score=None):
+    base,level=_entry_label(m["timing"] if entry_score is None else entry_score); risks=[]; releases=[]; cal,earnings_days=_calendar_data(symbol)
     if earnings_days is not None and 0<=earnings_days<=7:
         risks.append(f"실적 발표가 D-{earnings_days}로 임박했습니다")
         releases.append("실적 발표 후 가격 방향과 거래량 확인")
@@ -153,22 +153,22 @@ def _entry_decision(symbol,a,m):
     return dict(base=base,final=final,risks=risks,releases=list(dict.fromkeys(releases)),calendar=cal)
 
 
-def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn):
+def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,entry_snapshot=None):
     st.markdown("""<style>
     .v4-hero{border:1px solid #29415e;border-radius:16px;padding:20px;background:#0d1b2d;margin-bottom:14px}.v4-hero h2{margin:.2rem 0 .6rem}.v4-hero p{color:#cbd5e1;line-height:1.75;margin:0}
     .v4-factor{border:1px solid #29415e;border-radius:14px;padding:16px;background:#0d1b2d;min-height:180px;margin-bottom:12px}.v4-tag{display:inline-block;color:#7dd3fc;background:#123252;border-radius:7px;padding:4px 7px;margin-right:8px;font-size:.7rem}.v4-num{font-size:2rem;font-weight:850;text-align:center;margin:12px}.v4-track{height:7px;background:#223149;border-radius:99px;overflow:hidden}.v4-track div{height:100%;border-radius:99px}.v4-factor p{color:#aebdd0;font-size:.86rem;line-height:1.55}
     .v4-row{border:1px solid #29415e;border-left:3px solid #64748b;border-radius:11px;padding:13px 15px;margin:8px 0;background:#0d1b2d;display:flex;justify-content:space-between;gap:18px;align-items:center}.v4-row small{display:block;color:#8292a8;margin-top:4px}.v4-row strong{text-align:right;white-space:nowrap}.v4-row.good{border-left-color:#10b981}.v4-row.good strong{color:#34d399}.v4-row.bad{border-left-color:#ef4444}.v4-row.bad strong{color:#fb7185}
     </style>""",unsafe_allow_html=True)
-    m=_metrics(a); inf=a["inf"]; name=inf.get("longName",symbol); decision=_entry_decision(symbol,a,m)
+    m=_metrics(a); inf=a["inf"]; name=inf.get("longName",symbol); entry_score=entry_snapshot.score if entry_snapshot else m["timing"]; decision=_entry_decision(symbol,a,m,entry_score)
     quality=_weighted([(a["fundamental"],.65),(_score(_safe(inf.get("revenueGrowth"))*100,-5,25),.2),(_score(_safe(inf.get("returnOnEquity"))*100,0,30),.15)])
     verdict=decision["final"]
     st.header(f"퀀트분석 · {name} ({symbol})")
-    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>TIMING DECISION</div><h2>{verdict} · {m['timing']:.1f}점</h2><p>기업 종합점수는 {quality:.1f}점, 진입 타이밍은 {m['timing']:.1f}점입니다. 좋은 기업과 좋은 매수 시점은 별도로 평가합니다. 현재가는 52주 고점보다 {(a['now']/m['high52']-1)*100:.1f}% 위치이며 RSI는 {m['rsi']:.1f}입니다.</p></div>",unsafe_allow_html=True)
+    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>ENTRY ENGINE V2 DECISION</div><h2>{verdict} · {entry_score:.1f}점</h2><p>기업 종합점수는 {quality:.1f}점, 공통 진입 적합도는 {entry_score:.1f}점입니다. 좋은 기업과 좋은 매수 시점은 별도로 평가합니다. 현재가는 52주 고점보다 {(a['now']/m['high52']-1)*100:.1f}% 위치이며 RSI는 {m['rsi']:.1f}입니다.</p></div>",unsafe_allow_html=True)
     c1,c2=st.columns(2)
     with c1:
         st.subheader("기업 종합점수"); _bar_card("기업 품질",quality,"성장성·수익성·재무안정성과 밸류에이션을 종합합니다.",color_fn,"QUALITY")
     with c2:
-        st.subheader("진입 타이밍"); _bar_card("현재 진입 여건",m["timing"],"추세·모멘텀·변동성·수급·시장환경에서 과열 감점을 반영합니다.",color_fn,"TIMING")
+        st.subheader("진입 타이밍"); _bar_card("현재 진입 여건",entry_score,"Entry Engine v2의 6개 공통 요소를 반영합니다.",color_fn,"ENTRY V2")
         st.markdown(f"**기본 판정:** {decision['base']}  \n**최종 판정:** {decision['final']}")
     if decision["risks"]:
         left,right=st.columns(2)

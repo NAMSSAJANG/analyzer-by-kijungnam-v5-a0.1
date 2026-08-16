@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Mapping
+
+
+def _clip(value: float) -> float:
+    return float(max(0, min(100, value)))
+
+
+@dataclass(frozen=True)
+class EntrySnapshot:
+    score: float
+    factors: Mapping[str, float]
+    interpretation: str
+
+
+def build_entry_snapshot(analysis: Mapping, quant: Mapping) -> EntrySnapshot:
+    now = float(analysis["now"])
+    low, high = map(float, analysis["entry_range"])
+    atr = max(float(analysis.get("atr", 0)), 1e-9)
+    midpoint = (low + high) / 2
+    distance_atr = abs(now - midpoint) / atr
+    chase_penalty = max(0, now - high) / atr * 18
+    position = _clip(88 - distance_atr * 15 - chase_penalty)
+    factors = {
+        "Trend": _clip(float(quant["trend"])),
+        "Price Position": position,
+        "Momentum": _clip(float(quant["momentum"])),
+        "Volume / OBV": _clip(float(quant["supply"])),
+        "Volatility": _clip(float(quant["volatility"])),
+        "Market": _clip(float(analysis["market"])),
+    }
+    weights = {"Trend": .25, "Price Position": .20, "Momentum": .20, "Volume / OBV": .15, "Volatility": .10, "Market": .10}
+    score = sum(factors[key] * weights[key] for key in factors)
+    positives = [key for key, value in factors.items() if value >= 65]
+    cautions = [key for key, value in factors.items() if value < 45]
+    first = f"{', '.join(positives[:2])} 신호가 우호적입니다." if positives else "현재 뚜렷하게 우세한 진입 요인이 부족합니다."
+    if now > high:
+        second = f"다만 현재가는 추천 진입구간 상단보다 {(now/high-1)*100:.1f}% 높아 단기 추격 진입 매력은 낮습니다."
+    elif cautions:
+        second = f"다만 {', '.join(cautions[:2])} 점수가 낮아 확인이 필요합니다."
+    else:
+        second = "현재가는 참고 진입구간과 가깝지만 지지와 거래량 확인이 필요합니다."
+    return EntrySnapshot(round(score, 1), factors, f"{first} {second}")

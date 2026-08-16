@@ -3,7 +3,7 @@ import unittest
 
 import pandas as pd
 
-from options_analyzer import calculate_max_pain, option_bias, summarize_options
+from options_analyzer import calculate_max_pain, option_bias, option_entry_readiness, summarize_options
 
 
 class OptionSummaryTests(unittest.TestCase):
@@ -44,6 +44,13 @@ class OptionSummaryTests(unittest.TestCase):
     def test_bias_has_five_levels(self):
         result = summarize_options(self.calls, self.puts, 100, "2026-09-18", date(2026, 8, 15))
         self.assertEqual(option_bias(result), "Mild Bullish")
+
+    def test_option_entry_has_five_factors(self):
+        summary = summarize_options(self.calls, self.puts, 100, "2026-09-18", date(2026, 8, 15))
+        entry = option_entry_readiness(summary, self.calls, self.puts, 100, "2026-09-18")
+        self.assertEqual(len(entry.factors), 5)
+        self.assertGreaterEqual(entry.score, 0)
+        self.assertLessEqual(entry.score, 100)
 
 
 if __name__ == "__main__":
