@@ -253,7 +253,7 @@ def trend_sparkline(trend, key):
     color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
     fill = "rgba(52,211,153,.10)" if trend.label == "Improving" else "rgba(251,113,133,.10)" if trend.label == "Weakening" else "rgba(251,191,36,.10)"
     # Categorical positions keep every trading-day observation equally spaced;
-    # weekends and holidays should not create visual gaps in a 5D score trend.
+    # weekends and holidays should not create visual gaps in a score trend.
     x = list(range(len(trend.values)))
     ticktext = [pd.Timestamp(date).strftime("%m.%d") for date in trend.dates] if len(trend.dates) == len(trend.values) else [str(value + 1) for value in x]
     fig = go.Figure(go.Scatter(
@@ -323,12 +323,13 @@ def render_market_dashboard():
     with c3:
         brief = "위험자산 흐름이 우호적입니다. 추세 확인 후 분할 접근이 유리합니다." if mh>=65 else "시장 방향성이 혼재합니다. 종목별 지지 확인과 비중 관리가 중요합니다." if mh>=45 else "시장 위험 선호가 약합니다. 현금 비중과 무효화 기준을 보수적으로 관리하세요."
         st.markdown("**AI Market Brief**"); st.info(brief)
-    st.subheader("MARKET HEALTH · 최근 5영업일")
+    st.subheader("MARKET HEALTH · 최근 10영업일 차트")
     market_history_trend=HISTORY_STORE.recent("__MARKET__", "market")
+    market_chart_trend=HISTORY_STORE.recent("__MARKET__", "market", count=10)
     st.markdown(format_trend(market_history_trend))
-    trend_sparkline(market_history_trend, "market_5d_sparkline")
+    trend_sparkline(market_chart_trend, "market_10d_sparkline")
     with st.expander("Market Pulse 12",expanded=False):
-        st.caption("작은 선 그래프는 마지막 거래일의 15분 단위 장중 흐름입니다. 아래 Market Health 5D는 최근 5영업일의 일별 시장점수 변화입니다.")
+        st.caption("작은 선 그래프는 마지막 거래일의 15분 단위 장중 흐름입니다. Market Health 차트는 최근 10영업일, 변화량과 Trend 판단은 최근 5영업일 기준입니다.")
         items=list(PULSE.items())
         for i in range(0,12,4):
             cols=st.columns(4)
@@ -416,7 +417,7 @@ if symbol:
                 option_view, _, _, _ = get_option_snapshot(symbol, analysis["now"])
             except Exception:
                 option_view = None
-            # 첫 조회에서도 5D 방향을 볼 수 있도록 누락된 최근 거래일을 가격·시장 데이터로 역산합니다.
+            # 5D 판단은 유지하면서 차트에는 10영업일을 보여줄 수 있도록 누락 데이터를 역산합니다.
             valid_trading_dates = {pd.Timestamp(x).date().isoformat() for x in analysis["data"].index}
             HISTORY_STORE.retain_valid_dates(symbol, valid_trading_dates)
             try:
@@ -425,7 +426,7 @@ if symbol:
             except Exception:
                 pass
             existing_dates = HISTORY_STORE.dates(symbol)
-            recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-5:]]
+            recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-10:]]
             for historical_date in recent_dates[:-1]:
                 if historical_date.isoformat() in existing_dates:
                     continue
@@ -501,10 +502,11 @@ if symbol and mode=="🎯 퀀트분석":
         from advanced_analyzer import render_advanced
         with st.spinner(f"{symbol}의 퀀트 데이터를 분석하는 중입니다..."): advanced_base=analysis or calc(symbol)
         if quant_view:
-            st.subheader("QUANT SCORE · 최근 5영업일")
+            st.subheader("QUANT SCORE · 최근 10영업일 차트")
             quant_history_trend=HISTORY_STORE.recent(symbol, "quant")
+            quant_chart_trend=HISTORY_STORE.recent(symbol, "quant", count=10)
             st.markdown(format_trend(quant_history_trend))
-            trend_sparkline(quant_history_trend, f"quant_5d_sparkline_{symbol}")
+            trend_sparkline(quant_chart_trend, f"quant_10d_sparkline_{symbol}")
             st.caption(f"현재 {quant_view['score']:.1f} {grade(quant_view['score'])} · 추세 {quant_view['trend']:.1f} · 모멘텀 {quant_view['momentum']:.1f} · 수급 {quant_view['supply']:.1f} · 기업품질 {quant_view['quality']:.1f}")
         if entry_view: render_entry_engine(entry_view, f"quant_entry_v2_{symbol}")
         render_advanced(symbol,advanced_base,prices,news,money,pct,clamp,grade,score_color,entry_view)
@@ -519,10 +521,11 @@ if symbol and mode=="📊 종합분석":
     cols=st.columns(4)
     for col,(label,key) in zip(cols,[("종합점수","total"),("펀더멘털","fundamental"),("테크니컬","technical"),("시장환경","market")]):
         with col:gauge(label,a[key])
-    st.subheader("종합점수 · 최근 5영업일")
+    st.subheader("종합점수 · 최근 10영업일 차트")
     overall_history_trend=HISTORY_STORE.recent(symbol, "overall")
+    overall_chart_trend=HISTORY_STORE.recent(symbol, "overall", count=10)
     st.markdown(format_trend(overall_history_trend))
-    trend_sparkline(overall_history_trend, f"overall_5d_sparkline_{symbol}")
+    trend_sparkline(overall_chart_trend, f"overall_10d_sparkline_{symbol}")
     if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
         st.caption("가격 기반 역산 포함 · 현재 펀더멘털 고정, 과거 기술·시장 데이터 재계산")
     positives=[]; cautions=[]
