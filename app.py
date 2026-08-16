@@ -229,7 +229,9 @@ def trend_sparkline(trend, key):
         height=155, margin=dict(l=18, r=18, t=28, b=28), showlegend=False,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(visible=True, fixedrange=True, showgrid=True, gridcolor="rgba(148,163,184,.22)",
-                   tickfont=dict(color="#94a3b8", size=11), tickformat="%m.%d", ticks="outside", ticklen=4,
+                   tickfont=dict(color="#94a3b8", size=11), tickmode="array", tickvals=x,
+                   ticktext=[date.strftime("%m.%d") for date in x] if trend.dates else [str(value) for value in x],
+                   ticks="outside", ticklen=4,
                    range=[x[0]-pd.Timedelta(hours=12), x[-1]+pd.Timedelta(hours=12)] if trend.dates else None),
         yaxis=dict(visible=False, fixedrange=True, range=[low-padding, high+padding]),
     )
