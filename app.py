@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+from io import StringIO
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,11 +23,21 @@ st.set_page_config(page_title="Stock Analyzer V5-a0.1", page_icon="📈", layout
 
 GRADE = [(80, "Strong"), (65, "Good"), (45, "Neutral"), (30, "Weak"), (-1, "Very Weak")]
 PULSE = {
-    "S&P 500": "^GSPC", "Nasdaq 100": "^NDX", "SOX": "^SOX", "VIX": "^VIX",
-    "Gold": "GC=F", "Silver": "SI=F", "WTI": "CL=F", "Copper": "HG=F",
-    "USD/KRW": "KRW=X", "DXY": "DX-Y.NYB", "Bitcoin": "BTC-USD", "Ethereum": "ETH-USD",
+    "S&P 500 (미국 대형주)": "^GSPC", "Nasdaq 100 (미국 기술주)": "^NDX",
+    "SOX (반도체 지수)": "^SOX", "VIX (공포지수)": "^VIX",
+    "Gold (금)": "GC=F", "Silver (은)": "SI=F", "WTI (미국 원유)": "CL=F", "Copper (경기민감 구리)": "HG=F",
+    "USD/KRW (원·달러)": "KRW=X", "DXY (달러지수)": "DX-Y.NYB", "Bitcoin (비트코인)": "BTC-USD", "Ethereum (이더리움)": "ETH-USD",
 }
-RATES = {"US 2Y": "^IRX", "US 10Y": "^TNX", "US 30Y": "^TYX", "HYG": "HYG", "LQD": "LQD"}
+RATE_GUIDE = {
+    "US 2Y": "연준 정책 기대에 민감한 단기 국채금리",
+    "US 5Y": "중기 성장·물가 기대를 반영하는 국채금리",
+    "US 10Y": "장기 성장과 주식 할인율의 기준 금리",
+    "US 30Y": "초장기 물가·재정 부담을 반영하는 국채금리",
+    "HYG": "미국 하이일드 회사채 ETF · 위험선호 참고",
+    "LQD": "미국 투자등급 회사채 ETF · 우량 신용시장 참고",
+    "10Y-2Y": "장단기 금리차 · 경기 사이클 참고",
+    "Credit Spread proxy": "HYG와 LQD의 20일 상대성과 · 신용 위험선호 대용값",
+}
 HISTORY_FILE = Path(os.getenv("ANALYZER_HISTORY_FILE", ".data/score_history.json"))
 HISTORY_STORE = JsonScoreHistory(HISTORY_FILE)
 
@@ -132,6 +143,15 @@ def prices(symbol: str, period="2y", interval="1d"):
     d = yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False, threads=False)
     if isinstance(d.columns, pd.MultiIndex): d.columns = d.columns.get_level_values(0)
     return d.dropna(how="all")
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def fred_yield(series_id: str) -> pd.Series:
+    """FRED constant-maturity Treasury yield; no API key required for graph CSV."""
+    url=f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    response=requests.get(url,timeout=12,headers={"User-Agent":"StockAnalyzer/5"}); response.raise_for_status()
+    frame=pd.read_csv(StringIO(response.text))
+    values=pd.to_numeric(frame[series_id],errors="coerce")
+    return pd.Series(values.values,index=pd.to_datetime(frame["observation_date"]),name=series_id).dropna()
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def info(symbol):
@@ -290,23 +310,32 @@ def render_market_dashboard():
     st.markdown(format_trend(market_history_trend))
     trend_sparkline(market_history_trend, "market_5d_sparkline")
     with st.expander("Market Pulse 12",expanded=False):
+        st.caption("작은 선 그래프는 마지막 거래일의 15분 단위 장중 흐름입니다. 아래 Market Health 5D는 최근 5영업일의 일별 시장점수 변화입니다.")
         items=list(PULSE.items())
         for i in range(0,12,4):
             cols=st.columns(4)
             for col,(n,s) in zip(cols,items[i:i+4]):
                 with col: pulse_card(n,s)
     with st.expander("금리 · 신용시장 보조 패널"):
-        cols=st.columns(7); last={}
-        for (n,s),col in zip(RATES.items(),cols):
+        cols=st.columns(4); last={}
+        for name,series_id,col in zip(("US 2Y","US 5Y","US 10Y","US 30Y"),("DGS2","DGS5","DGS10","DGS30"),cols):
             try:
-                d=prices(s,"5d")["Close"].dropna(); v=float(d.iloc[-1]); ch=(v/d.iloc[-2]-1)*100; last[n]=v
-                col.metric(n,money(v),pct(ch))
-            except Exception: col.metric(n,"-")
-        cols[5].metric("10Y-2Y",f"{last.get('US 10Y',np.nan)-last.get('US 2Y',np.nan):+.2f}")
+                d=fred_yield(series_id); v=float(d.iloc[-1]); change=v-float(d.iloc[-2]); last[name]=v
+                col.metric(name,f"{v:.2f}%",f"{change:+.2f}%p"); col.caption(RATE_GUIDE[name])
+            except Exception: col.metric(name,"N/A"); col.caption(RATE_GUIDE[name])
+        cols=st.columns(4)
+        for name,symbol_name,col in (("HYG","HYG",cols[0]),("LQD","LQD",cols[1])):
+            try:
+                d=prices(symbol_name,"1mo")["Close"].dropna(); v=float(d.iloc[-1]); ch=(v/d.iloc[-2]-1)*100
+                col.metric(name,money(v),pct(ch)); col.caption(RATE_GUIDE[name])
+            except Exception: col.metric(name,"N/A"); col.caption(RATE_GUIDE[name])
+        spread=last.get('US 10Y',np.nan)-last.get('US 2Y',np.nan)
+        cols[2].metric("10Y-2Y",f"{spread:+.2f}%p" if np.isfinite(spread) else "N/A"); cols[2].caption(RATE_GUIDE["10Y-2Y"])
         try:
             hyg=prices("HYG","6mo")["Close"].squeeze(); lqd=prices("LQD","6mo")["Close"].squeeze()
-            cols[6].metric("Credit Spread proxy",f"{(hyg.iloc[-1]/hyg.iloc[-20]-lqd.iloc[-1]/lqd.iloc[-20])*100:+.2f}%")
-        except Exception: cols[6].metric("Credit Spread proxy","-")
+            cols[3].metric("Credit Spread proxy",f"{(hyg.iloc[-1]/hyg.iloc[-20]-lqd.iloc[-1]/lqd.iloc[-20])*100:+.2f}%")
+        except Exception: cols[3].metric("Credit Spread proxy","N/A")
+        cols[3].caption(RATE_GUIDE["Credit Spread proxy"])
 
 st.title("Stock Analyzer by Kijungnam")
 st.caption("V5-a0.1 · MULTI-LENS DECISION SYSTEM")
