@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import xml.etree.ElementTree as ET
 from io import StringIO
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,6 +163,26 @@ def fred_yields() -> pd.DataFrame:
         if series_id not in frame.columns: frame[series_id]=np.nan
         frame[series_id]=pd.to_numeric(frame[series_id],errors="coerce")
     return frame.set_index(date_column)[list(series_ids)].dropna(how="all")
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def treasury_yields() -> pd.DataFrame:
+    """Official U.S. Treasury par yields, including the actual 2-year yield."""
+    year=datetime.now(timezone.utc).year
+    url="https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
+    response=requests.get(url,params={"data":"daily_treasury_yield_curve","field_tdr_date_value":year},
+                          timeout=5,headers={"User-Agent":"StockAnalyzer/5"}); response.raise_for_status()
+    rows=[]
+    field_map={"BC_2YEAR":"DGS2","BC_5YEAR":"DGS5","BC_10YEAR":"DGS10","BC_30YEAR":"DGS30"}
+    for properties in ET.fromstring(response.content).iter():
+        if properties.tag.rsplit("}",1)[-1] != "properties": continue
+        values={child.tag.rsplit("}",1)[-1]: child.text for child in properties}
+        date=values.get("NEW_DATE") or values.get("Date")
+        if not date: continue
+        row={"date":pd.to_datetime(date,errors="coerce")}
+        row.update({target:pd.to_numeric(values.get(source),errors="coerce") for source,target in field_map.items()})
+        rows.append(row)
+    if not rows: raise ValueError("Treasury yield rows are missing")
+    return pd.DataFrame(rows).set_index("date").sort_index().dropna(how="all")
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def info(symbol):
@@ -327,20 +348,34 @@ def render_market_dashboard():
             for col,(n,s) in zip(cols,items[i:i+4]):
                 with col: pulse_card(n,s)
     with st.expander("금리 · 신용시장 보조 패널"):
-        st.caption("미 국채 금리는 FRED의 최근 거래일 자료이며, HYG·LQD는 신용시장의 위험 선호를 보조적으로 보여줍니다.")
-        cols=st.columns(4); last={}
+        st.caption("2년물은 미 재무부 공식 자료, 5·10·30년물은 Yahoo를 우선 사용합니다. 연결 실패 시 미 재무부·FRED 자료로 자동 전환합니다.")
+        cols=st.columns(4); last={}; sources={}
         try:
-            treasury=fred_yields()
-            rate_note=""
+            official=treasury_yields()
         except Exception:
-            treasury=pd.DataFrame()
-            rate_note="FRED 연결이 지연되어 국채 금리는 N/A로 표시합니다. HYG·LQD는 별도로 계속 불러옵니다."
+            official=pd.DataFrame()
+        try:
+            fred=fred_yields() if official.empty else pd.DataFrame()
+        except Exception:
+            fred=pd.DataFrame()
+        yahoo_rates={"US 5Y":"^FVX","US 10Y":"^TNX","US 30Y":"^TYX"}
         for name,series_id,col in zip(("US 2Y","US 5Y","US 10Y","US 30Y"),("DGS2","DGS5","DGS10","DGS30"),cols):
             try:
-                d=treasury[series_id].dropna(); v=float(d.iloc[-1]); change=v-float(d.iloc[-2]); last[name]=v
-                col.metric(name,f"{v:.2f}%",f"{change:+.2f}%p"); col.caption(RATE_GUIDE[name])
+                d=pd.Series(dtype=float)
+                if name in yahoo_rates:
+                    try:
+                        d=prices(yahoo_rates[name],"1mo")["Close"].dropna(); sources[name]="Yahoo"
+                    except Exception: pass
+                if d.empty and not official.empty and series_id in official:
+                    d=official[series_id].dropna(); sources[name]="미 재무부"
+                if d.empty and not fred.empty and series_id in fred:
+                    d=fred[series_id].dropna(); sources[name]="FRED"
+                if d.empty: raise ValueError("rate series is empty")
+                v=float(d.iloc[-1]); change=v-float(d.iloc[-2]); last[name]=v
+                col.metric(name,f"{v:.2f}%",f"{change:+.2f}%p"); col.caption(f"{RATE_GUIDE[name]} · {sources[name]}")
             except Exception: col.metric(name,"N/A"); col.caption(RATE_GUIDE[name])
-        if rate_note: st.caption(f"※ {rate_note}")
+        missing=[name for name in ("US 2Y","US 5Y","US 10Y","US 30Y") if name not in last]
+        if missing: st.caption(f"※ 현재 연결되지 않은 금리: {', '.join(missing)}. 나머지 신용시장 자료는 정상적으로 계속 표시합니다.")
         cols=st.columns(4)
         for name,symbol_name,col in (("HYG","HYG",cols[0]),("LQD","LQD",cols[1])):
             try:
