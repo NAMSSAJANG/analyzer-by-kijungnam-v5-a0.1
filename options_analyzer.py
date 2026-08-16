@@ -136,7 +136,29 @@ def summarize_options(calls: pd.DataFrame, puts: pd.DataFrame, spot: float, expi
 
 
 def option_bias(summary: OptionSummary) -> str:
-    return "Mild Bullish" if summary.confirmation.startswith("Bullish") else "Mild Bearish" if summary.confirmation.startswith("Bearish") else "Neutral"
+    ratios = [value for value in (summary.volume_ratio, summary.oi_ratio) if math.isfinite(value)]
+    if not ratios:
+        return "Neutral"
+    blended = float(np.mean(ratios))
+    if blended <= .65:
+        return "Bullish"
+    if blended <= .90:
+        return "Mild Bullish"
+    if blended < 1.10:
+        return "Neutral"
+    if blended < 1.50:
+        return "Mild Bearish"
+    return "Bearish"
+
+
+def bias_style(bias: str) -> tuple[str, str]:
+    return {
+        "Bullish": ("🟢", "#22c55e"),
+        "Mild Bullish": ("🟢", "#34d399"),
+        "Neutral": ("🟡", "#fbbf24"),
+        "Mild Bearish": ("🔴", "#fb7185"),
+        "Bearish": ("🔴", "#ef4444"),
+    }.get(bias, ("⚪", "#94a3b8"))
 
 
 def price_confluence(summary: OptionSummary, support: float | None, resistance: float | None, spot: float) -> tuple[str, str]:
@@ -223,8 +245,11 @@ def render_options(symbol: str, spot: float, money, support=None, resistance=Non
         st.warning("선택한 만기의 옵션 체인을 현재 불러올 수 없습니다. 잠시 후 다시 시도하거나 다른 만기를 선택해 주세요. 기존 분석 기능은 정상적으로 사용할 수 있습니다.")
         return
     st.subheader("Options Market Summary")
+    bias = option_bias(summary)
+    bias_icon, bias_color = bias_style(bias)
+    st.markdown(f"<div style='border:1px solid {bias_color};border-left:5px solid {bias_color};border-radius:14px;padding:14px 16px;background:#0d1b2d;margin-bottom:12px'><div style='color:#94a3b8;font-size:.78rem;font-weight:800;letter-spacing:.1em'>OPTION MARKET BIAS</div><div style='color:{bias_color};font-size:1.45rem;font-weight:850;margin-top:5px'>{bias_icon} {bias}</div></div>", unsafe_allow_html=True)
     cols = st.columns(4)
-    cols[0].metric("Option Bias", option_bias(summary))
+    cols[0].metric("Option Bias", f"{bias_icon} {bias}")
     cols[1].metric("ATM Implied Volatility", _fmt_iv(summary.atm_iv))
     cols[2].metric("Put / Call Volume", _fmt_ratio(summary.volume_ratio))
     cols[3].metric("Put / Call OI", _fmt_ratio(summary.oi_ratio))

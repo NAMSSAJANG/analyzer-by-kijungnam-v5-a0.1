@@ -27,10 +27,10 @@ class JsonScoreHistory:
         except (OSError, ValueError, TypeError):
             return {}
 
-    def record(self, symbol: str, scores: Mapping[str, float], as_of: date | None = None) -> dict:
+    def record(self, symbol: str, scores: Mapping[str, float], as_of: date | None = None, metadata: Mapping | None = None) -> dict:
         data = self.load()
         rows = data.setdefault(symbol, [])
-        row = {"date": (as_of or date.today()).isoformat(), **{k: round(float(v), 1) for k, v in scores.items()}}
+        row = {"date": (as_of or date.today()).isoformat(), **{k: round(float(v), 1) for k, v in scores.items()}, **dict(metadata or {})}
         rows[:] = [item for item in rows if item.get("date") != row["date"]]
         rows.append(row)
         rows.sort(key=lambda item: item.get("date", ""))
@@ -48,6 +48,12 @@ class JsonScoreHistory:
         change = round(values[-1] - values[0], 1) if len(values) > 1 else None
         label = "Improving" if change is not None and change >= 2 else "Weakening" if change is not None and change <= -2 else "Stable"
         return ScoreTrend(values, change, label)
+
+    def dates(self, symbol: str) -> set[str]:
+        return {str(row.get("date")) for row in self.load().get(symbol, []) if row.get("date")}
+
+    def recent_rows(self, symbol: str, count: int = 5) -> list[dict]:
+        return list(self.load().get(symbol, []))[-count:]
 
 
 def format_trend(trend: ScoreTrend) -> str:

@@ -3,7 +3,7 @@ import unittest
 
 import pandas as pd
 
-from options_analyzer import calculate_max_pain, summarize_options
+from options_analyzer import calculate_max_pain, option_bias, summarize_options
 
 
 class OptionSummaryTests(unittest.TestCase):
@@ -40,6 +40,10 @@ class OptionSummaryTests(unittest.TestCase):
         calls = pd.DataFrame({"strike": [90, 100, 110], "openInterest": [10, 100, 10]})
         puts = pd.DataFrame({"strike": [90, 100, 110], "openInterest": [10, 100, 10]})
         self.assertEqual(calculate_max_pain(calls, puts), 100.0)
+
+    def test_bias_has_five_levels(self):
+        result = summarize_options(self.calls, self.puts, 100, "2026-09-18", date(2026, 8, 15))
+        self.assertEqual(option_bias(result), "Mild Bullish")
 
 
 if __name__ == "__main__":

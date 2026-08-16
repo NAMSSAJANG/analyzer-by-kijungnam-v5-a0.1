@@ -45,7 +45,7 @@ st.markdown("""
 .score-value{color:#f8fafc;font-size:clamp(1.65rem,2.4vw,2.25rem);font-weight:800;line-height:1.15;white-space:nowrap}.score-denom{color:#94a3b8;font-size:.9rem;font-weight:700}
 .score-track{height:9px;border-radius:99px;background:#223149;margin:18px 0 13px;overflow:hidden}.score-fill{height:100%;border-radius:99px;min-width:2px}
 .score-grade{font-size:.92rem;font-weight:750;display:flex;align-items:center;gap:7px}.score-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
-.consensus{border:1px solid #315272;border-radius:18px;padding:18px;background:linear-gradient(135deg,#0d1b2d,#10243a);margin:14px 0}.consensus-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.lens{background:#0a1728;border:1px solid #29415e;border-radius:12px;padding:11px}.lens small{color:#94a3b8;display:block}.lens b{color:#f8fafc}.consensus-summary{margin-top:13px;color:#dbeafe;line-height:1.65}
+.consensus{border:1px solid #315272;border-radius:18px;padding:18px;background:linear-gradient(135deg,#0d1b2d,#10243a);margin:14px 0}.consensus-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.lens{background:#0a1728;border:1px solid #29415e;border-radius:12px;padding:11px}.lens small{color:#94a3b8;display:block}.lens b{color:#f8fafc}.lens-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:7px;box-shadow:0 0 9px currentColor}.consensus-summary{margin-top:13px;color:#dbeafe;line-height:1.65}.consensus-lines{margin-top:12px;border-top:1px solid #29415e;padding-top:10px;display:grid;gap:6px}.consensus-line{display:flex;gap:10px;align-items:center}.consensus-line span:first-child{width:48px;color:#94a3b8}.consensus-line b{color:#f8fafc}
 [data-testid="stMetricValue"]{font-size:clamp(1.55rem,3vw,2.35rem);white-space:normal;overflow-wrap:anywhere}
 [data-testid="stMetricLabel"]{color:#cbd5e1} [data-testid="stExpander"]{border-color:#29415e;background:#0a1728}
 [data-testid="stAlert"]{border-radius:12px} div[data-testid="stPlotlyChart"]{overflow:hidden}
@@ -155,8 +155,10 @@ def spark(symbol):
         return s, base
     except Exception: return pd.Series(dtype=float), np.nan
 
-def calc(symbol):
-    d=prices(symbol); c=d["Close"].dropna(); vol=d.get("Volume", pd.Series(index=c.index,dtype=float)).reindex(c.index)
+def calc(symbol, as_of=None, info_override=None):
+    d=prices(symbol)
+    if as_of is not None: d=d.loc[pd.to_datetime(d.index).date<=pd.Timestamp(as_of).date()]
+    c=d["Close"].dropna(); vol=d.get("Volume", pd.Series(index=c.index,dtype=float)).reindex(c.index)
     if len(c)<210: raise ValueError("최소 200거래일 이상의 가격 데이터가 필요합니다.")
     now=float(c.iloc[-1]); ma20=c.rolling(20).mean(); ma50=c.rolling(50).mean(); ma200=c.rolling(200).mean()
     ret=lambda n: float((now/c.iloc[-min(n,len(c))]-1)*100)
@@ -164,10 +166,10 @@ def calc(symbol):
     long=clamp(50+1.1*(now/ma200.iloc[-1]-1)*100+.8*(ma50.iloc[-1]/ma200.iloc[-1]-1)*100+.8*slope50+.5*slope200+.18*ret(126)+.12*ret(252))
     rsi_delta=c.diff(); gain=rsi_delta.clip(lower=0).rolling(14).mean(); loss=-rsi_delta.clip(upper=0).rolling(14).mean(); rsi=float(100-100/(1+gain.iloc[-1]/max(loss.iloc[-1],1e-9)))
     short=clamp(50+1.2*(now/ma20.iloc[-1]-1)*100+.7*(ma20.iloc[-1]/ma50.iloc[-1]-1)*100+(rsi-50)*.35+.18*ret(20))
-    inf=info(symbol); pe=safe(inf.get("trailingPE"),25); growth=safe(inf.get("revenueGrowth"),0)*100; margin=safe(inf.get("profitMargins"),0)*100; roe=safe(inf.get("returnOnEquity"),0)*100; debt=safe(inf.get("debtToEquity"),100)
+    inf=info_override if info_override is not None else info(symbol); pe=safe(inf.get("trailingPE"),25); growth=safe(inf.get("revenueGrowth"),0)*100; margin=safe(inf.get("profitMargins"),0)*100; roe=safe(inf.get("returnOnEquity"),0)*100; debt=safe(inf.get("debtToEquity"),100)
     fundamental=clamp(50+(growth-8)*.7+(margin-10)*.45+(roe-12)*.35-(max(pe-30,0))*.25-(max(debt-100,0))*.05)
     technical=clamp(.55*long+.45*short)
-    market=market_score()
+    market=market_score(pd.Timestamp(as_of).date().isoformat() if as_of is not None else None)
     total=clamp(.38*fundamental+.42*technical+.20*market)
     atr=float(pd.concat([d.High-d.Low,(d.High-d.Close.shift()).abs(),(d.Low-d.Close.shift()).abs()],axis=1).max(axis=1).rolling(14).mean().iloc[-1])
     lows=[]; highs=[]
@@ -182,14 +184,18 @@ def calc(symbol):
       short_reason=f"현재가/20일선 {(now/ma20.iloc[-1]-1)*100:+.1f}% · 20/50일선 {(ma20.iloc[-1]/ma50.iloc[-1]-1)*100:+.1f}% · RSI(14) {rsi:.1f}")
 
 @st.cache_data(ttl=600, show_spinner=False)
-def market_score():
+def market_score(as_of=None):
     vals=[]
     for s in ("^GSPC","^NDX","^SOX","HYG"):
         try:
-            c=prices(s,"6mo")["Close"].dropna(); vals.append(clamp(50+(c.iloc[-1]/c.rolling(50).mean().iloc[-1]-1)*250))
+            c=prices(s,"6mo")["Close"].dropna()
+            if as_of is not None: c=c.loc[pd.to_datetime(c.index).date<=pd.Timestamp(as_of).date()]
+            vals.append(clamp(50+(c.iloc[-1]/c.rolling(50).mean().iloc[-1]-1)*250))
         except Exception: pass
     try:
-        v=prices("^VIX","1mo")["Close"].iloc[-1]; vals.append(clamp(80-(v-12)*3))
+        vc=prices("^VIX","1mo")["Close"].dropna()
+        if as_of is not None: vc=vc.loc[pd.to_datetime(vc.index).date<=pd.Timestamp(as_of).date()]
+        v=vc.iloc[-1]; vals.append(clamp(80-(v-12)*3))
     except Exception: pass
     return float(np.mean(vals)) if vals else 50
 
@@ -285,7 +291,7 @@ analysis_history = HISTORY_STORE.load()
 if symbol:
     try:
         from advanced_analyzer import quant_snapshot
-        from options_analyzer import get_option_snapshot, option_bias
+        from options_analyzer import bias_style, get_option_snapshot, option_bias
         with st.spinner(f"{symbol}의 분석 관점을 통합하는 중입니다..."):
             analysis = calc(symbol)
             quant_view = quant_snapshot(analysis)
@@ -293,8 +299,22 @@ if symbol:
                 option_view, _, _, _ = get_option_snapshot(symbol, analysis["now"])
             except Exception:
                 option_view = None
-            analysis_history = HISTORY_STORE.record(symbol, {"overall": analysis["total"], "quant": quant_view["score"], "market": analysis["market"]})
-            HISTORY_STORE.record("__MARKET__", {"market": analysis["market"]})
+            # 첫 조회에서도 5D 방향을 볼 수 있도록 누락된 최근 거래일을 가격·시장 데이터로 역산합니다.
+            existing_dates = HISTORY_STORE.dates(symbol)
+            recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-5:]]
+            for historical_date in recent_dates[:-1]:
+                if historical_date.isoformat() in existing_dates:
+                    continue
+                try:
+                    past = calc(symbol, historical_date, analysis["inf"])
+                    past_quant = quant_snapshot(past)
+                    HISTORY_STORE.record(symbol, {"overall": past["total"], "quant": past_quant["score"], "market": past["market"]}, historical_date, {"source": "reconstructed"})
+                    HISTORY_STORE.record("__MARKET__", {"market": past["market"]}, historical_date, {"source": "reconstructed"})
+                except Exception:
+                    pass
+            data_date = pd.Timestamp(analysis["data"].index[-1]).date()
+            analysis_history = HISTORY_STORE.record(symbol, {"overall": analysis["total"], "quant": quant_view["score"], "market": analysis["market"]}, data_date, {"source": "recorded"})
+            HISTORY_STORE.record("__MARKET__", {"market": analysis["market"]}, data_date, {"source": "recorded"})
         overall_trend = HISTORY_STORE.recent(symbol, "overall")
         quant_trend = HISTORY_STORE.recent(symbol, "quant")
         market_trend = HISTORY_STORE.recent("__MARKET__", "market")
@@ -306,15 +326,28 @@ if symbol:
             "market": Lens("시장", analysis["market"], change=market_trend.change),
         }
         consensus = build_consensus(lenses)
-        def lens_card(label, value, trend=None):
+        def lens_tone(lens):
+            if not lens.available: return ("#94a3b8", "N/A")
+            if lens.name == "옵션":
+                _, color = bias_style(option_label); return (color, option_label)
+            color = "#34d399" if lens.direction > 0 else "#fb7185" if lens.direction < 0 else "#fbbf24"
+            return (color, grade(lens.score))
+        def lens_card(label, value, lens, trend=None):
             delta = "" if trend is None or trend.change is None else f" · {'▲' if trend.change >= 0 else '▼'}{abs(trend.change):.1f} / 5D"
-            return f"<div class='lens'><small>{label}</small><b>{value}{delta}</b></div>"
+            color, _ = lens_tone(lens)
+            return f"<div class='lens'><small>{label}</small><b><i class='lens-dot' style='color:{color};background:{color}'></i>{value}{delta}</b></div>"
+        def lens_line(lens, value):
+            color, status = lens_tone(lens)
+            return f"<div class='consensus-line'><span>{lens.name}</span><i class='lens-dot' style='color:{color};background:{color}'></i><b>{value if value else status}</b></div>"
         st.markdown("<div class='consensus'><div class='brief-kicker'>ANALYSIS CONSENSUS</div><div class='consensus-grid'>"+
-            lens_card("종합", f"{analysis['total']:.0f} {grade(analysis['total'])}", overall_trend)+
-            lens_card("퀀트", f"{quant_view['score']:.0f} {grade(quant_view['score'])}", quant_trend)+
-            lens_card("옵션", option_label)+lens_card("시장", f"{analysis['market']:.0f} {grade(analysis['market'])}", market_trend)+
-            f"</div><div class='consensus-summary'><b>{consensus.headline}</b> · Consensus: <b>{consensus.pattern}</b> · Confidence: <b>{consensus.confidence}%</b><br>{consensus.interpretation}</div></div>", unsafe_allow_html=True)
+            lens_card("종합", f"{analysis['total']:.0f} {grade(analysis['total'])}", lenses['overall'], overall_trend)+
+            lens_card("퀀트", f"{quant_view['score']:.0f} {grade(quant_view['score'])}", lenses['quant'], quant_trend)+
+            lens_card("옵션", option_label, lenses['options'])+lens_card("시장", f"{analysis['market']:.0f} {grade(analysis['market'])}", lenses['market'], market_trend)+
+            "</div><div class='consensus-lines'>"+lens_line(lenses['overall'], grade(analysis['total']))+lens_line(lenses['quant'], grade(quant_view['score']))+lens_line(lenses['options'], option_label)+lens_line(lenses['market'], grade(analysis['market']))+"</div>"+
+            f"<div class='consensus-summary'><b>{consensus.headline}</b><br>Consensus: <b>{consensus.pattern}</b> · Confidence: <b>{consensus.confidence}%</b><br><br><b>해석</b><br>{consensus.interpretation}</div></div>", unsafe_allow_html=True)
         st.caption("Confidence는 상승 확률이 아니라 분석 방향의 일관성과 데이터 품질에 대한 신뢰도입니다.")
+        if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
+            st.caption("최근 5D 중 `가격 기반 역산` 값은 현재 펀더멘털을 고정하고 각 거래일의 가격·거래량·시장환경을 재계산한 참고값입니다. 이후 실제 저장값으로 순차 교체됩니다.")
     except Exception as exc:
         st.warning(f"Analysis Consensus를 계산하지 못했습니다. 개별 분석 메뉴는 계속 사용할 수 있습니다: {exc}")
 
@@ -358,6 +391,8 @@ if symbol and mode=="📊 종합분석":
         with col:gauge(label,a[key])
     st.subheader("종합점수 · 최근 5영업일")
     st.markdown(format_trend(HISTORY_STORE.recent(symbol, "overall")))
+    if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
+        st.caption("가격 기반 역산 포함 · 현재 펀더멘털 고정, 과거 기술·시장 데이터 재계산")
     positives=[]; cautions=[]
     (positives if a['long']>=65 else cautions).append(f"장기 추세 {grade(a['long'])} ({a['long']:.0f})")
     (positives if a['short']>=65 else cautions).append(f"단기 추세 {grade(a['short'])} ({a['short']:.0f})")
