@@ -213,20 +213,24 @@ def trend_sparkline(trend, key):
         return
     color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
     fill = "rgba(52,211,153,.10)" if trend.label == "Improving" else "rgba(251,113,133,.10)" if trend.label == "Weakening" else "rgba(251,191,36,.10)"
-    x = list(range(1, len(trend.values) + 1))
+    x = list(pd.to_datetime(trend.dates)) if len(trend.dates) == len(trend.values) else list(range(1, len(trend.values) + 1))
     fig = go.Figure(go.Scatter(
-        x=x, y=list(trend.values), mode="lines+markers",
+        x=x, y=list(trend.values), mode="lines+markers+text",
         line=dict(color=color, width=3, shape="spline"),
-        marker=dict(color=color, size=7, line=dict(color="#07111f", width=1)),
+        marker=dict(color=color, size=8, line=dict(color="#07111f", width=1.5)),
+        text=[f"{value:.0f}" for value in trend.values], textposition="top center",
+        textfont=dict(color="#cbd5e1", size=12), cliponaxis=False,
         fill="tozeroy", fillcolor=fill,
         hovertemplate="%{y:.1f}점<extra></extra>",
     ))
     low, high = min(trend.values), max(trend.values)
     padding = max((high - low) * .45, 2)
     fig.update_layout(
-        height=105, margin=dict(l=4, r=4, t=8, b=4), showlegend=False,
+        height=155, margin=dict(l=18, r=18, t=28, b=28), showlegend=False,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(visible=False, fixedrange=True),
+        xaxis=dict(visible=True, fixedrange=True, showgrid=True, gridcolor="rgba(148,163,184,.22)",
+                   tickfont=dict(color="#94a3b8", size=11), tickformat="%m.%d", ticks="outside", ticklen=4,
+                   range=[x[0]-pd.Timedelta(hours=12), x[-1]+pd.Timedelta(hours=12)] if trend.dates else None),
         yaxis=dict(visible=False, fixedrange=True, range=[low-padding, high+padding]),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)

@@ -12,6 +12,7 @@ class ScoreTrend:
     values: tuple[float, ...]
     change: float | None
     label: str
+    dates: tuple[str, ...] = ()
 
 
 class JsonScoreHistory:
@@ -44,10 +45,12 @@ class JsonScoreHistory:
 
     def recent(self, symbol: str, key: str, count: int = 5) -> ScoreTrend:
         rows = self.load().get(symbol, [])
-        values = tuple(float(row[key]) for row in rows if row.get(key) is not None)[-count:]
+        pairs = [(str(row.get("date", "")), float(row[key])) for row in rows if row.get(key) is not None][-count:]
+        dates = tuple(item[0] for item in pairs)
+        values = tuple(item[1] for item in pairs)
         change = round(values[-1] - values[0], 1) if len(values) > 1 else None
         label = "Improving" if change is not None and change >= 2 else "Weakening" if change is not None and change <= -2 else "Stable"
-        return ScoreTrend(values, change, label)
+        return ScoreTrend(values, change, label, dates)
 
     def dates(self, symbol: str) -> set[str]:
         return {str(row.get("date")) for row in self.load().get(symbol, []) if row.get("date")}
