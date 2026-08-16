@@ -248,3 +248,4 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
             st.markdown(f"[{title}]({url})" if url else title); st.caption(summary[:180] if summary else "제목 기반 참고 뉴스")
     st.warning("기관 수급·컨센서스·공매도·한국 공시는 무료 Yahoo 데이터에서 누락될 수 있습니다. 없는 데이터는 임의 추정하지 않으며, DART 정식 공시는 별도 API 키 연동이 필요합니다.")
 
+

@@ -135,3 +135,4 @@ def build_consensus(lenses: Mapping[str, Lens]) -> Consensus:
         pattern, headline = "Mixed / Divergence", "Mixed"
     text = detailed_interpretation(lenses, pattern)
     return Consensus(headline, pattern, max(0, min(100, confidence)), text, len(active), positive)
+

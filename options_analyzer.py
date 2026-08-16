@@ -352,3 +352,4 @@ def render_options(symbol: str, spot: float, money, support=None, resistance=Non
         show = ["contractSymbol", "strike", "lastPrice", "bid", "ask", "volume", "openInterest", "impliedVolatility"]
         left.markdown("**CALL**"); left.dataframe(calls[[x for x in show if x in calls]], hide_index=True, use_container_width=True)
         right.markdown("**PUT**"); right.dataframe(puts[[x for x in show if x in puts]], hide_index=True, use_container_width=True)
+

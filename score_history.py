@@ -80,3 +80,4 @@ def format_trend(trend: ScoreTrend) -> str:
     delta = "N/A" if trend.change is None else f"{trend.change:+.1f}"
     icon = {"Improving": "🟢", "Weakening": "🔴", "Stable": "🟡"}[trend.label]
     return f"{sequence}  \n5D Change: **{delta}** · Trend: {icon} **{trend.label}**"
+

@@ -18,6 +18,7 @@ import yfinance as yf
 
 from consensus_engine import Lens, build_consensus, confidence_interpretation
 from entry_engine import build_entry_snapshot
+from korean_stock_search import contains_hangul, load_krx_listing, search_krx_listing
 from score_history import JsonScoreHistory, format_trend
 
 st.set_page_config(page_title="Stock Analyzer V5-a0.1", page_icon="📈", layout="wide")
@@ -99,18 +100,8 @@ def money(v):
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def krx_listing():
-    """한국거래소 상장 종목 목록. 실패 시 빈 표를 반환해 Yahoo 검색을 계속 사용합니다."""
-    try:
-        import FinanceDataReader as fdr
-        df=fdr.StockListing("KRX")
-        code_col=next((x for x in ("Code","Symbol") if x in df.columns),None)
-        if code_col is None or "Name" not in df.columns: return pd.DataFrame()
-        keep=[code_col,"Name"]+(["Market"] if "Market" in df.columns else [])
-        out=df[keep].copy().rename(columns={code_col:"Code"})
-        out["Code"]=out["Code"].astype(str).str.zfill(6); out["Name"]=out["Name"].astype(str)
-        if "Market" not in out: out["Market"]="KRX"
-        return out
-    except Exception: return pd.DataFrame(columns=["Code","Name","Market"])
+    """한국거래소 목록을 단계별 원격 소스와 내장 안전망에서 불러옵니다."""
+    return load_krx_listing()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def search_yahoo(q: str):
@@ -118,22 +109,18 @@ def search_yahoo(q: str):
     if not q: return []
     merged=[]
     # 한글 회사명과 6자리 종목코드는 KRX 목록을 우선 검색합니다.
-    if re.search(r"[가-힣]",q) or re.fullmatch(r"\d{1,6}",q):
+    is_hangul=contains_hangul(q)
+    if is_hangul or re.fullmatch(r"\d{1,6}",q):
         try:
-            listing=krx_listing(); normalized=q.zfill(6) if q.isdigit() else q
-            if q.isdigit(): mask=listing["Code"].str.startswith(normalized)
-            else: mask=listing["Name"].str.contains(q,case=False,regex=False)
-            for _,row in listing[mask].head(10).iterrows():
-                market=str(row.get("Market","KRX")); suffix=".KQ" if "KOSDAQ" in market.upper() else ".KS"
-                merged.append({"symbol":f"{row['Code']}{suffix}","name":row["Name"],"exchange":market,"type":"Equity"})
+            merged.extend(search_krx_listing(q,krx_listing()))
         except Exception: pass
     try:
         data=requests.get("https://query2.finance.yahoo.com/v1/finance/search",params={"q":q,"quotesCount":10,"newsCount":0},headers={"User-Agent":"Mozilla/5.0"},timeout=8).json()
-        merged.extend({"symbol":x.get("symbol"),"name":x.get("longname") or x.get("shortname") or x.get("symbol"),"exchange":x.get("exchDisp",""),"type":x.get("quoteType","")} for x in data.get("quotes",[]) if x.get("symbol"))
+        merged.extend({"symbol":x.get("symbol"),"name":x.get("longname") or x.get("shortname") or x.get("symbol"),"exchange":x.get("exchDisp",""),"type":x.get("quoteType","")} for x in data.get("quotes",[]) if x.get("symbol") and not contains_hangul(x.get("symbol")))
     except Exception: pass
     if not merged and re.fullmatch(r"\d{6}",q):
         merged=[{"symbol":f"{q}.KS","name":f"한국 종목 {q}","exchange":"KOSPI 후보","type":"Equity"},{"symbol":f"{q}.KQ","name":f"한국 종목 {q}","exchange":"KOSDAQ 후보","type":"Equity"}]
-    if not merged: merged=[{"symbol":q.upper(),"name":q.upper(),"exchange":"직접 입력","type":""}]
+    if not merged and not is_hangul: merged=[{"symbol":q.upper(),"name":q.upper(),"exchange":"직접 입력","type":""}]
     seen=set(); unique=[]
     for row in merged:
         if row["symbol"] not in seen: seen.add(row["symbol"]); unique.append(row)

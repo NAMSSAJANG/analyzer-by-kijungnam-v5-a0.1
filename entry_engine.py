@@ -53,3 +53,4 @@ def build_entry_snapshot(analysis: Mapping, quant: Mapping) -> EntrySnapshot:
     else:
         second = "현재가는 참고 진입구간과 가깝지만 지지와 거래량 확인이 필요합니다."
     return EntrySnapshot(round(score, 1), factors, f"{first} {second}", details)
+

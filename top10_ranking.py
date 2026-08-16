@@ -236,3 +236,4 @@ def render_top10(market_health: float):
     if market == "KOSPI":
         st.caption("KOSPI는 안정적인 무료 데이터 조회를 위해 시가총액 상위 500개 종목을 대상으로 산정합니다.")
 
+

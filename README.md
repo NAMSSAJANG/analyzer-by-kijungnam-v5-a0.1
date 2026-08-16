@@ -32,3 +32,4 @@ The app uses public market-data sources, including Yahoo Finance, the U.S. Treas
 ## Disclaimer
 
 This project is for informational and educational purposes only. It does not constitute investment advice, and all investment decisions remain the responsibility of the user.
+
