@@ -14,7 +14,7 @@ import requests
 import streamlit as st
 import yfinance as yf
 
-from consensus_engine import Lens, build_consensus
+from consensus_engine import Lens, build_consensus, confidence_interpretation
 from score_history import JsonScoreHistory, format_trend
 
 st.set_page_config(page_title="Stock Analyzer V5-a0.1", page_icon="📈", layout="wide")
@@ -349,14 +349,17 @@ if symbol:
         overall_trend = HISTORY_STORE.recent(symbol, "overall")
         quant_trend = HISTORY_STORE.recent(symbol, "quant")
         market_trend = HISTORY_STORE.recent("__MARKET__", "market")
+        reconstructed = any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol))
+        history_quality = .82 if reconstructed else 1.0
         option_label = option_bias(option_view) if option_view else "N/A"
         lenses = {
-            "overall": Lens("종합", analysis["total"], change=overall_trend.change),
-            "quant": Lens("퀀트", quant_view["score"], change=quant_trend.change),
+            "overall": Lens("종합", analysis["total"], change=overall_trend.change, data_quality=history_quality),
+            "quant": Lens("퀀트", quant_view["score"], change=quant_trend.change, data_quality=history_quality),
             "options": Lens("옵션", label=option_label, available=option_view is not None, data_quality=option_view.data_quality if option_view else 0),
-            "market": Lens("시장", analysis["market"], change=market_trend.change),
+            "market": Lens("시장", analysis["market"], change=market_trend.change, data_quality=history_quality),
         }
         consensus = build_consensus(lenses)
+        confidence_note = confidence_interpretation(consensus.confidence)
         def lens_tone(lens):
             if not lens.available: return ("#94a3b8", "N/A")
             if lens.name == "옵션":
@@ -375,9 +378,9 @@ if symbol:
             lens_card("퀀트", f"{quant_view['score']:.0f} {grade(quant_view['score'])}", lenses['quant'], quant_trend)+
             lens_card("옵션", option_label, lenses['options'])+lens_card("시장", f"{analysis['market']:.0f} {grade(analysis['market'])}", lenses['market'], market_trend)+
             "</div><div class='consensus-lines'>"+lens_line(lenses['overall'], grade(analysis['total']))+lens_line(lenses['quant'], grade(quant_view['score']))+lens_line(lenses['options'], option_label)+lens_line(lenses['market'], grade(analysis['market']))+"</div>"+
-            f"<div class='consensus-summary'><b>{consensus.headline}</b><br>Consensus: <b>{consensus.pattern}</b> · Confidence: <b>{consensus.confidence}%</b><br><br><b>해석</b><br>{consensus.interpretation}</div></div>", unsafe_allow_html=True)
+            f"<div class='consensus-summary'><b>{consensus.headline}</b><br>Consensus: <b>{consensus.pattern}</b> · Confidence: <b>{consensus.confidence}%</b><br><span style='color:#94a3b8'>Confidence 해석: {confidence_note}</span><br><br><b>해석</b><br>{consensus.interpretation}</div></div>", unsafe_allow_html=True)
         st.caption("Confidence는 상승 확률이 아니라 분석 방향의 일관성과 데이터 품질에 대한 신뢰도입니다.")
-        if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
+        if reconstructed:
             st.caption("최근 5D 중 `가격 기반 역산` 값은 현재 펀더멘털을 고정하고 각 거래일의 가격·거래량·시장환경을 재계산한 참고값입니다. 이후 실제 저장값으로 순차 교체됩니다.")
     except Exception as exc:
         st.warning(f"Analysis Consensus를 계산하지 못했습니다. 개별 분석 메뉴는 계속 사용할 수 있습니다: {exc}")

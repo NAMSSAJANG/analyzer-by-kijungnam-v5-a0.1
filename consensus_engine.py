@@ -33,30 +33,56 @@ class Consensus:
     positive: int
 
 
+def confidence_interpretation(value: int) -> str:
+    if value >= 85:
+        return "높음 · 분석 방향과 데이터 품질이 대체로 일관적입니다. 상승 확률을 의미하지는 않습니다."
+    if value >= 70:
+        return "보통 · 주요 방향은 확인되지만 일부 중립·결측·품질 저하 요인이 있습니다."
+    return "낮음 · 분석 신호가 엇갈리거나 데이터가 충분하지 않아 추가 확인이 필요합니다."
+
+
 def build_consensus(lenses: Mapping[str, Lens]) -> Consensus:
     active = [x for x in lenses.values() if x.available]
     positive = sum(x.direction > 0 for x in active)
     negative = sum(x.direction < 0 for x in active)
-    directional = positive + negative
-    alignment = max(positive, negative) / directional if directional else .5
+    neutral = sum(x.direction == 0 for x in active)
+    # Neutral is useful information, not an item to silently remove. It therefore
+    # lowers agreement while unavailable data is handled separately by coverage.
+    alignment = max(positive, negative, neutral) / len(active) if active else 0
     improving = [x.change for x in active if x.change is not None]
-    improving_ratio = sum(x >= 2 for x in improving) / len(improving) if improving else .5
+    improving_count = sum(x >= 2 for x in improving)
+    weakening_count = sum(x <= -2 for x in improving)
+    stable_count = len(improving) - improving_count - weakening_count
+    momentum_alignment = max(improving_count, weakening_count, stable_count) / len(improving) if improving else .5
     quality = sum(max(0, min(1, x.data_quality)) for x in active) / len(active) if active else 0
     coverage = len(active) / max(len(lenses), 1)
-    confidence = round(100 * (.50 * alignment + .25 * quality + .15 * coverage + .10 * improving_ratio))
+    confidence = round(100 * (.45 * alignment + .25 * quality + .15 * coverage + .15 * momentum_alignment))
+    # Guardrails keep the number interpretable and prevent incomplete or mixed
+    # inputs from presenting false precision.
+    confidence = min(confidence, 95)
+    if neutral:
+        confidence = min(confidence, 90)
+    if len(active) < len(lenses):
+        confidence = min(confidence, 85)
+    if positive and negative:
+        confidence = min(confidence, 72)
+    if any(x.data_quality < .90 for x in active):
+        confidence = min(confidence, 88)
+    if any(x.name == "옵션" and x.data_quality < .60 for x in active):
+        confidence = min(confidence, 80)
     quant = lenses.get("quant")
     overall = lenses.get("overall")
     options = lenses.get("options")
-    if directional and positive and negative:
+    if positive and negative:
         pattern = "Quality vs Timing" if quant and quant.direction > 0 and ((overall and overall.direction < 1) or (options and options.available and options.direction < 1)) else "Mixed / Divergence"
         headline = "Divergence Detected"
-    elif len(improving) >= 2 and sum(x >= 2 for x in improving) >= 2:
+    elif len(improving) >= 2 and improving_count >= 2:
         pattern, headline = "Strengthening", f"{positive} / {len(active)} Positive"
     elif positive >= max(2, len(active) - 1):
         pattern, headline = "Broad Strength", f"{positive} / {len(active)} Positive"
     elif negative >= max(2, len(active) - 1):
         pattern, headline = "Broad Weakness", f"{positive} / {len(active)} Positive"
-    elif improving and sum(x <= -2 for x in improving) >= 2:
+    elif improving and weakening_count >= 2:
         pattern, headline = "Momentum Fading", "Mixed"
     else:
         pattern, headline = "Mixed / Divergence", "Mixed"
