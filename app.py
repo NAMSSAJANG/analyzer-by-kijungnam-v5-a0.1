@@ -78,6 +78,7 @@ div[role="radiogroup"]{display:grid!important;grid-template-columns:repeat(4,min
 div[role="radiogroup"] label{min-width:0!important;padding:.42rem .15rem!important;justify-content:center}
 div[role="radiogroup"] label p{font-size:.72rem!important;white-space:nowrap}
 .consensus-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.consensus{padding:13px}.lens{padding:9px}
+.scenario{height:auto!important;min-height:0!important;margin:0 0 14px!important;position:relative}
 }
 </style>""", unsafe_allow_html=True)
 
