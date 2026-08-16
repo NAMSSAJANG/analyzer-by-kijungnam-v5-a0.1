@@ -247,7 +247,7 @@ def render_entry_engine(snapshot, key):
     rows=[]
     for name,value in snapshot.factors.items():
         icon="🟢" if value>=65 else "🟡" if value>=45 else "🔴"
-        rows.append({"요소":labels[name],"점수":round(value,1),"상태":f"{icon} {grade(value)}"})
+        rows.append({"요소":labels[name] if name != "Volatility" else "변동성 안정성","점수":round(value,1),"상태":f"{icon} {grade(value)}","해석":snapshot.details[name]})
     st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
                  column_config={"점수":st.column_config.ProgressColumn("점수",min_value=0,max_value=100,format="%.1f")},key=key)
     st.info(snapshot.interpretation)

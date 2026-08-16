@@ -38,6 +38,7 @@ class OptionEntry:
     score: float
     factors: dict[str, float]
     interpretation: str
+    details: dict[str, str]
 
 
 def _number(value, default=0.0) -> float:
@@ -180,7 +181,8 @@ def option_entry_readiness(summary: OptionSummary, calls: pd.DataFrame, puts: pd
         for _, row in nearby.iterrows():
             bid, ask = _number(row.get("bid")), _number(row.get("ask")); mid = (bid + ask) / 2
             if mid > 0 and ask >= bid: spreads.append((ask-bid)/mid)
-    spread_score = max(0, 100 - (float(np.median(spreads)) if spreads else .5) * 180)
+    median_spread = float(np.median(spreads)) if spreads else .5
+    spread_score = max(0, 100 - median_spread * 180)
     liquidity = .6 * activity + .4 * spread_score
     iv_efficiency = 50 if not math.isfinite(summary.atm_iv) else max(0, min(100, 100-summary.atm_iv*100))
     if bias in ("Bullish", "Mild Bullish"):
@@ -195,13 +197,20 @@ def option_entry_readiness(summary: OptionSummary, calls: pd.DataFrame, puts: pd
     days=max((datetime.strptime(expiry,"%Y-%m-%d").date()-datetime.now().date()).days,1)
     time_decay=max(0,min(100,(days-5)/40*100))
     factors={"Direction":direction,"IV Efficiency":iv_efficiency,"Liquidity":liquidity,"Risk / Reward":risk_reward,"Time / DTE":time_decay}
+    details={
+        "Direction":f"Option Bias {bias}를 진입 방향 확인도로 변환했습니다.",
+        "IV Efficiency":f"ATM IV {_fmt_iv(summary.atm_iv)}입니다. IV가 높을수록 매수 프리미엄 부담을 크게 봅니다.",
+        "Liquidity":f"총 OI {total_oi:,}, 거래량 {total_volume:,}, 근접 행사가 중간 호가 스프레드 {median_spread*100:.1f}%를 반영합니다.",
+        "Risk / Reward":f"주요 OI Wall과 예상 변동범위의 보상/위험 비율 {rr:.2f}배를 반영합니다.",
+        "Time / DTE":f"선택 만기까지 {days}일입니다. 5일 이하는 시간가치 감소 위험을 가장 높게 봅니다.",
+    }
     weights={"Direction":.30,"IV Efficiency":.15,"Liquidity":.25,"Risk / Reward":.20,"Time / DTE":.10}
     score=round(sum(factors[k]*weights[k] for k in factors),1)
     if liquidity<45: note="방향성보다 유동성 부족과 넓은 호가가 우선 위험요인입니다."
     elif iv_efficiency<45 and bias in ("Bullish","Mild Bullish"): note="상승 방향성은 있지만 IV와 프리미엄 부담이 높아 단순 Call보다 손익이 제한된 스프레드 구조를 함께 비교할 환경입니다."
     elif time_decay<40: note="만기가 짧아 시간가치 감소 민감도가 높으므로 포지션 유지기간을 보수적으로 봐야 합니다."
     else: note="방향성·유동성·만기 구조가 대체로 균형적이지만 최대손실과 손익분기점을 별도로 확인해야 합니다."
-    return OptionEntry(score,{k:round(v,1) for k,v in factors.items()},note)
+    return OptionEntry(score,{k:round(v,1) for k,v in factors.items()},note,details)
 
 
 def price_confluence(summary: OptionSummary, support: float | None, resistance: float | None, spot: float) -> tuple[str, str]:
@@ -302,7 +311,7 @@ def render_options(symbol: str, spot: float, money, support=None, resistance=Non
     entry_rows=[]
     for name,value in entry.factors.items():
         icon="🟢" if value>=65 else "🟡" if value>=45 else "🔴"
-        entry_rows.append({"요소":name,"점수":value,"상태":icon})
+        entry_rows.append({"요소":name,"점수":value,"상태":icon,"해석":entry.details[name]})
     st.dataframe(pd.DataFrame(entry_rows),hide_index=True,use_container_width=True,
                  column_config={"점수":st.column_config.ProgressColumn("점수",min_value=0,max_value=100,format="%.1f")})
     st.info(f"**AI 판단** · {entry.interpretation} Option Entry는 옵션시장 방향이 아니라 현재 체인의 진입 준비도를 나타내며 기존 종합점수에는 반영되지 않습니다.")

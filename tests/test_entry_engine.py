@@ -11,6 +11,7 @@ class EntryEngineTests(unittest.TestCase):
         self.assertEqual(len(result.factors), 6)
         self.assertLess(result.factors["Price Position"], 45)
         self.assertIn("추격", result.interpretation)
+        self.assertIn("ATR", result.details["Volatility"])
 
 
 if __name__ == "__main__":

@@ -51,6 +51,7 @@ class OptionSummaryTests(unittest.TestCase):
         self.assertEqual(len(entry.factors), 5)
         self.assertGreaterEqual(entry.score, 0)
         self.assertLessEqual(entry.score, 100)
+        self.assertIn("만기까지", entry.details["Time / DTE"])
 
 
 if __name__ == "__main__":
