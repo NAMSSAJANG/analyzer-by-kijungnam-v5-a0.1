@@ -208,6 +208,28 @@ def gauge(label, value):
       <div class='score-grade' style='color:{color}'><span class='score-dot' style='background:{color}'></span>{label_text}</div>
     </div>""",unsafe_allow_html=True)
 
+def trend_sparkline(trend, key):
+    if len(trend.values) < 2:
+        return
+    color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
+    x = list(range(1, len(trend.values) + 1))
+    fig = go.Figure(go.Scatter(
+        x=x, y=list(trend.values), mode="lines+markers",
+        line=dict(color=color, width=3, shape="spline"),
+        marker=dict(color=color, size=7, line=dict(color="#07111f", width=1)),
+        fill="tozeroy", fillcolor=color + "18",
+        hovertemplate="%{y:.1f}점<extra></extra>",
+    ))
+    low, high = min(trend.values), max(trend.values)
+    padding = max((high - low) * .45, 2)
+    fig.update_layout(
+        height=105, margin=dict(l=4, r=4, t=8, b=4), showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(visible=False, fixedrange=True),
+        yaxis=dict(visible=False, fixedrange=True, range=[low-padding, high+padding]),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
+
 def briefing(title: str, body: str, kicker="AI BRIEF", wide=False):
     cls="brief-card wide" if wide else "brief-card"
     st.markdown(f"<div class='{cls}'><div class='brief-kicker'>{kicker}</div><h3>{title}</h3><p>{body}</p></div>",unsafe_allow_html=True)
@@ -242,7 +264,9 @@ def render_market_dashboard():
         brief = "위험자산 흐름이 우호적입니다. 추세 확인 후 분할 접근이 유리합니다." if mh>=65 else "시장 방향성이 혼재합니다. 종목별 지지 확인과 비중 관리가 중요합니다." if mh>=45 else "시장 위험 선호가 약합니다. 현금 비중과 무효화 기준을 보수적으로 관리하세요."
         st.markdown("**AI Market Brief**"); st.info(brief)
     st.subheader("MARKET HEALTH · 최근 5영업일")
-    st.markdown(format_trend(HISTORY_STORE.recent("__MARKET__", "market")))
+    market_history_trend=HISTORY_STORE.recent("__MARKET__", "market")
+    st.markdown(format_trend(market_history_trend))
+    trend_sparkline(market_history_trend, "market_5d_sparkline")
     with st.expander("Market Pulse 12",expanded=False):
         items=list(PULSE.items())
         for i in range(0,12,4):
@@ -375,7 +399,9 @@ if symbol and mode=="🎯 퀀트분석":
         with st.spinner(f"{symbol}의 퀀트 데이터를 분석하는 중입니다..."): advanced_base=analysis or calc(symbol)
         if quant_view:
             st.subheader("QUANT SCORE · 최근 5영업일")
-            st.markdown(format_trend(HISTORY_STORE.recent(symbol, "quant")))
+            quant_history_trend=HISTORY_STORE.recent(symbol, "quant")
+            st.markdown(format_trend(quant_history_trend))
+            trend_sparkline(quant_history_trend, f"quant_5d_sparkline_{symbol}")
             st.caption(f"현재 {quant_view['score']:.1f} {grade(quant_view['score'])} · 추세 {quant_view['trend']:.1f} · 모멘텀 {quant_view['momentum']:.1f} · 수급 {quant_view['supply']:.1f} · 기업품질 {quant_view['quality']:.1f}")
         render_advanced(symbol,advanced_base,prices,news,money,pct,clamp,grade,score_color)
     except Exception as e: st.error(f"퀀트분석을 표시할 수 없습니다: {e}")
@@ -390,7 +416,9 @@ if symbol and mode=="📊 종합분석":
     for col,(label,key) in zip(cols,[("종합점수","total"),("펀더멘털","fundamental"),("테크니컬","technical"),("시장환경","market")]):
         with col:gauge(label,a[key])
     st.subheader("종합점수 · 최근 5영업일")
-    st.markdown(format_trend(HISTORY_STORE.recent(symbol, "overall")))
+    overall_history_trend=HISTORY_STORE.recent(symbol, "overall")
+    st.markdown(format_trend(overall_history_trend))
+    trend_sparkline(overall_history_trend, f"overall_5d_sparkline_{symbol}")
     if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
         st.caption("가격 기반 역산 포함 · 현재 펀더멘털 고정, 과거 기술·시장 데이터 재계산")
     positives=[]; cautions=[]
