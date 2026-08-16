@@ -213,7 +213,10 @@ def trend_sparkline(trend, key):
         return
     color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
     fill = "rgba(52,211,153,.10)" if trend.label == "Improving" else "rgba(251,113,133,.10)" if trend.label == "Weakening" else "rgba(251,191,36,.10)"
-    x = list(pd.to_datetime(trend.dates)) if len(trend.dates) == len(trend.values) else list(range(1, len(trend.values) + 1))
+    # Categorical positions keep every trading-day observation equally spaced;
+    # weekends and holidays should not create visual gaps in a 5D score trend.
+    x = list(range(len(trend.values)))
+    ticktext = [pd.Timestamp(date).strftime("%m.%d") for date in trend.dates] if len(trend.dates) == len(trend.values) else [str(value + 1) for value in x]
     fig = go.Figure(go.Scatter(
         x=x, y=list(trend.values), mode="lines+markers+text",
         line=dict(color=color, width=3, shape="spline"),
@@ -230,9 +233,9 @@ def trend_sparkline(trend, key):
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(visible=True, fixedrange=True, showgrid=True, gridcolor="rgba(148,163,184,.22)",
                    tickfont=dict(color="#94a3b8", size=11), tickmode="array", tickvals=x,
-                   ticktext=[date.strftime("%m.%d") for date in x] if trend.dates else [str(value) for value in x],
+                   ticktext=ticktext,
                    ticks="outside", ticklen=4,
-                   range=[x[0]-pd.Timedelta(hours=12), x[-1]+pd.Timedelta(hours=12)] if trend.dates else None),
+                   range=[x[0]-.18, x[-1]+.18]),
         yaxis=dict(visible=False, fixedrange=True, range=[low-padding, high+padding]),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
@@ -331,6 +334,13 @@ if symbol:
             except Exception:
                 option_view = None
             # 첫 조회에서도 5D 방향을 볼 수 있도록 누락된 최근 거래일을 가격·시장 데이터로 역산합니다.
+            valid_trading_dates = {pd.Timestamp(x).date().isoformat() for x in analysis["data"].index}
+            HISTORY_STORE.retain_valid_dates(symbol, valid_trading_dates)
+            try:
+                market_valid_dates = {pd.Timestamp(x).date().isoformat() for x in prices("^GSPC", "6mo").index}
+                HISTORY_STORE.retain_valid_dates("__MARKET__", market_valid_dates)
+            except Exception:
+                pass
             existing_dates = HISTORY_STORE.dates(symbol)
             recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-5:]]
             for historical_date in recent_dates[:-1]:

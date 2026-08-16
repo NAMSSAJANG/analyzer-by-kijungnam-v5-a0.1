@@ -36,6 +36,13 @@ class ConsensusTests(unittest.TestCase):
         self.assertIn("상승 확률", confidence_interpretation(85))
         self.assertIn("추가 확인", confidence_interpretation(60))
 
+    def test_divergence_interpretation_explains_each_lens_and_action(self):
+        result = build_consensus({"overall": Lens("종합", 25), "quant": Lens("퀀트", 30), "options": Lens("옵션", label="Bullish"), "market": Lens("시장", 57)})
+        self.assertIn("종합은 25점", result.interpretation)
+        self.assertIn("퀀트는 30점", result.interpretation)
+        self.assertIn("옵션은 Bullish", result.interpretation)
+        self.assertIn("기술적 추세 회복", result.interpretation)
+
 
 if __name__ == "__main__":
     unittest.main()

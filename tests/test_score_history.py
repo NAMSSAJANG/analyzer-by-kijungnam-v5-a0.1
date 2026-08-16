@@ -17,6 +17,14 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual(trend.values, (72.0, 78.0))
             self.assertEqual(trend.change, 6.0)
 
+    def test_non_trading_legacy_date_is_removed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = JsonScoreHistory(Path(folder) / "history.json")
+            store.record("MU", {"overall": 84}, date(2026, 8, 14))
+            store.record("MU", {"overall": 84}, date(2026, 8, 16))
+            store.retain_valid_dates("MU", {"2026-08-14"})
+            self.assertEqual(store.dates("MU"), {"2026-08-14"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,22 @@ class JsonScoreHistory:
     def recent_rows(self, symbol: str, count: int = 5) -> list[dict]:
         return list(self.load().get(symbol, []))[-count:]
 
+    def retain_valid_dates(self, symbol: str, valid_dates: set[str]) -> dict:
+        """Remove legacy rows saved on dates absent from the symbol's trading calendar."""
+        data = self.load()
+        if symbol not in data:
+            return data
+        filtered = [row for row in data[symbol] if str(row.get("date")) in valid_dates]
+        if filtered == data[symbol]:
+            return data
+        data[symbol] = filtered
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+        return data
+
 
 def format_trend(trend: ScoreTrend) -> str:
     sequence = " → ".join(f"{v:.0f}" for v in trend.values) or "N/A"
