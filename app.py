@@ -52,6 +52,7 @@ st.markdown("""
 .brief-card{box-sizing:border-box;border:1px solid #29415e;border-radius:15px;padding:18px;background:#0d1b2d;height:calc(100% - 14px);min-height:190px;color:#dbeafe;margin-bottom:14px}
 .brief-card.wide{min-height:168px}.brief-card.matched{height:220px;min-height:220px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
 .brief-card h3{color:#f8fafc;margin:.1rem 0 1rem;font-size:1.35rem}.brief-card p{line-height:1.8;margin:0;color:#dbeafe}
+.factor-card{box-sizing:border-box;border-radius:12px;padding:18px 20px;height:170px;margin-bottom:14px;font-size:1rem;line-height:1.75}.factor-card h4{margin:0 0 14px;font-size:1.12rem}.factor-card.positive{background:#103c30;color:#6ee7b7}.factor-card.caution{background:#3b431c;color:#fef08a}
 .scenario{box-sizing:border-box;border-radius:12px;padding:16px;min-height:145px;height:145px;overflow:auto}.scenario h4{margin:0 0 16px}.scenario p{margin:0;line-height:1.75}
 .up{background:#103c30;color:#6ee7b7}.mid{background:#102d4d;color:#7dd3fc}.down{background:#451d28;color:#fda4af}
 .score-card{box-sizing:border-box;border:1px solid #29415e;border-radius:16px;padding:18px 18px 16px;background:#0d1b2d;min-height:150px;height:100%}
@@ -63,7 +64,7 @@ st.markdown("""
 [data-testid="stMetricValue"]{font-size:clamp(1.55rem,3vw,2.35rem);white-space:normal;overflow-wrap:anywhere}
 [data-testid="stMetricLabel"]{color:#cbd5e1} [data-testid="stExpander"]{border-color:#29415e;background:#0a1728}
 [data-testid="stAlert"]{border-radius:12px} div[data-testid="stPlotlyChart"]{overflow:hidden}
-@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide,.brief-card.matched{height:auto;min-height:0}.scenario{height:auto;min-height:130px}}
+@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide,.brief-card.matched,.factor-card{height:auto;min-height:0}.scenario{height:auto;min-height:130px}}
 @media(min-width:901px){div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]){align-items:stretch}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]{display:flex}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]>div{width:100%}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stAlert"]{box-sizing:border-box;height:100%}}
 @media(max-width:700px){
 html,body,#root{
@@ -535,9 +536,11 @@ if symbol and mode=="📊 종합분석":
     (positives if a['long']>=65 else cautions).append(f"장기 추세 {grade(a['long'])} ({a['long']:.0f})")
     (positives if a['short']>=65 else cautions).append(f"단기 추세 {grade(a['short'])} ({a['short']:.0f})")
     (positives if a['fundamental']>=65 else cautions).append(f"펀더멘털 {grade(a['fundamental'])}")
+    positive_html="<br>".join(f"• {z}" for z in positives) if positives else "• 뚜렷한 우위 요인을 추가 확인하세요."
+    caution_html="<br>".join(f"• {z}" for z in cautions) if cautions else "• 현재 모델상 두드러진 약점이 적습니다."
     x,y=st.columns(2)
-    with x: st.success("**긍정 요인**\n\n"+"\n\n".join(f"• {z}" for z in positives) if positives else "뚜렷한 우위 요인을 추가 확인하세요.")
-    with y: st.warning("**주의 요인**\n\n"+"\n\n".join(f"• {z}" for z in cautions) if cautions else "현재 모델상 두드러진 약점이 적습니다.")
+    with x: st.markdown(f"<div class='factor-card positive'><h4>긍정 요인</h4>{positive_html}</div>",unsafe_allow_html=True)
+    with y: st.markdown(f"<div class='factor-card caution'><h4>주의 요인</h4>{caution_html}</div>",unsafe_allow_html=True)
     st.info(f"종합점수는 펀더멘털 38%, 테크니컬 42%, 시장환경 20%를 반영합니다. 현재 {a['total']:.1f}점({grade(a['total'])})입니다.")
 
     st.subheader("AI 종합 브리핑")

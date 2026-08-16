@@ -155,7 +155,7 @@ def _entry_decision(symbol,a,m,entry_score=None):
 
 def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,entry_snapshot=None):
     st.markdown("""<style>
-    .v4-hero{border:1px solid #29415e;border-radius:16px;padding:20px;background:#0d1b2d;margin-bottom:14px}.v4-hero h2{margin:.2rem 0 .6rem}.v4-hero p{color:#cbd5e1;line-height:1.75;margin:0}
+    .v4-hero{border:1px solid #29415e;border-radius:16px;padding:20px;background:#0d1b2d;margin-bottom:14px}.v4-hero h2{margin:.2rem 0 .8rem}.v4-hero p{color:#cbd5e1;line-height:1.75;margin:0}.v4-decision{border-top:1px solid #29415e;border-bottom:1px solid #29415e;padding:12px 0;margin:0 0 12px;display:flex;gap:18px;flex-wrap:wrap}.v4-decision b{color:#f8fafc}.v4-decision small{display:block;width:100%;color:#94a3b8;line-height:1.55}
     .v4-factor{border:1px solid #29415e;border-radius:14px;padding:16px;background:#0d1b2d;min-height:180px;margin-bottom:12px}.v4-tag{display:inline-block;color:#7dd3fc;background:#123252;border-radius:7px;padding:4px 7px;margin-right:8px;font-size:.7rem}.v4-num{font-size:2rem;font-weight:850;text-align:center;margin:12px}.v4-track{height:7px;background:#223149;border-radius:99px;overflow:hidden}.v4-track div{height:100%;border-radius:99px}.v4-factor p{color:#aebdd0;font-size:.86rem;line-height:1.55}
     .v4-row{border:1px solid #29415e;border-left:3px solid #64748b;border-radius:11px;padding:13px 15px;margin:8px 0;background:#0d1b2d;display:flex;justify-content:space-between;gap:18px;align-items:center}.v4-row small{display:block;color:#8292a8;margin-top:4px}.v4-row strong{text-align:right;white-space:nowrap}.v4-row.good{border-left-color:#10b981}.v4-row.good strong{color:#34d399}.v4-row.bad{border-left-color:#ef4444}.v4-row.bad strong{color:#fb7185}
     </style>""",unsafe_allow_html=True)
@@ -163,15 +163,12 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
     quality=_weighted([(a["fundamental"],.65),(_score(_safe(inf.get("revenueGrowth"))*100,-5,25),.2),(_score(_safe(inf.get("returnOnEquity"))*100,0,30),.15)])
     verdict=decision["final"]
     st.header(f"퀀트분석 · {name} ({symbol})")
-    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>ENTRY ENGINE V2 DECISION</div><h2>{verdict} · {entry_score:.1f}점</h2><p>기업 종합점수는 {quality:.1f}점, 공통 진입 적합도는 {entry_score:.1f}점입니다. 좋은 기업과 좋은 매수 시점은 별도로 평가합니다. 현재가는 52주 고점보다 {(a['now']/m['high52']-1)*100:.1f}% 위치이며 RSI는 {m['rsi']:.1f}입니다.</p></div>",unsafe_allow_html=True)
+    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>ENTRY ENGINE V2 DECISION</div><h2>{verdict}</h2><div class='v4-decision'><span><b>기본 판정</b> · {decision['base']}</span><span>→</span><span><b>최종 판정</b> · {decision['final']}</span><small>기본 판정은 진입 적합도 점수 구간의 1차 결과이며, 최종 판정은 과열·가격 위치·거래량·시장환경·손실 허용폭·실적 일정을 반영한 보정 결과입니다.</small></div><p>기업 종합점수는 {quality:.1f}점, 공통 진입 적합도는 {entry_score:.1f}점입니다. 좋은 기업과 좋은 매수 시점은 별도로 평가합니다. 현재가는 52주 고점보다 {(a['now']/m['high52']-1)*100:.1f}% 위치이며 RSI는 {m['rsi']:.1f}입니다.</p></div>",unsafe_allow_html=True)
     c1,c2=st.columns(2)
     with c1:
         st.subheader("기업 종합점수"); _bar_card("기업 품질",quality,"성장성·수익성·재무안정성과 밸류에이션을 종합합니다.",color_fn,"QUALITY")
     with c2:
         st.subheader("진입 타이밍"); _bar_card("현재 진입 여건",entry_score,"Entry Engine v2의 6개 공통 요소를 반영합니다.",color_fn,"ENTRY V2")
-        st.markdown(f"**기본 판정:** {decision['base']}  \n**최종 판정:** {decision['final']}")
-        st.caption("기본 판정 · 진입 적합도 점수 구간으로 산정한 1차 결과")
-        st.caption("최종 판정 · 과열, 가격 위치, 거래량, 시장환경, 손실 허용폭과 실적 일정을 반영해 보정한 결과")
     if decision["risks"]:
         left,right=st.columns(2)
         with left: st.warning("**판정을 낮춘 위험 조건**\n\n"+"\n\n".join(f"• {x}" for x in decision["risks"]))
@@ -249,4 +246,3 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
         for title,summary,url in rows[:5]:
             st.markdown(f"[{title}]({url})" if url else title); st.caption(summary[:180] if summary else "제목 기반 참고 뉴스")
     st.warning("기관 수급·컨센서스·공매도·한국 공시는 무료 Yahoo 데이터에서 누락될 수 있습니다. 없는 데이터는 임의 추정하지 않으며, DART 정식 공시는 별도 API 키 연동이 필요합니다.")
-
