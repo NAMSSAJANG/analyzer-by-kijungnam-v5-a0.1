@@ -50,7 +50,7 @@ st.markdown("""
 .card{border:1px solid #29415e;border-radius:14px;padding:14px;background:#0d1b2d;min-height:132px}
 .badge{display:inline-block;padding:3px 9px;border-radius:99px;background:#102c46;color:#7dd3fc;font-weight:700}
 .brief-card{box-sizing:border-box;border:1px solid #29415e;border-radius:15px;padding:18px;background:#0d1b2d;height:calc(100% - 14px);min-height:190px;color:#dbeafe;margin-bottom:14px}
-.brief-card.wide{min-height:168px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
+.brief-card.wide{min-height:168px}.brief-card.matched{height:220px;min-height:220px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
 .brief-card h3{color:#f8fafc;margin:.1rem 0 1rem;font-size:1.35rem}.brief-card p{line-height:1.8;margin:0;color:#dbeafe}
 .scenario{box-sizing:border-box;border-radius:12px;padding:16px;min-height:145px;height:145px;overflow:auto}.scenario h4{margin:0 0 16px}.scenario p{margin:0;line-height:1.75}
 .up{background:#103c30;color:#6ee7b7}.mid{background:#102d4d;color:#7dd3fc}.down{background:#451d28;color:#fda4af}
@@ -63,7 +63,7 @@ st.markdown("""
 [data-testid="stMetricValue"]{font-size:clamp(1.55rem,3vw,2.35rem);white-space:normal;overflow-wrap:anywhere}
 [data-testid="stMetricLabel"]{color:#cbd5e1} [data-testid="stExpander"]{border-color:#29415e;background:#0a1728}
 [data-testid="stAlert"]{border-radius:12px} div[data-testid="stPlotlyChart"]{overflow:hidden}
-@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide{min-height:0}.scenario{height:auto;min-height:130px}}
+@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide,.brief-card.matched{height:auto;min-height:0}.scenario{height:auto;min-height:130px}}
 @media(max-width:700px){
 html,body,#root{
   height:auto!important;min-height:100%!important;overflow:visible!important;background:#07111f!important
@@ -78,6 +78,7 @@ div[role="radiogroup"]{display:grid!important;grid-template-columns:repeat(4,min
 div[role="radiogroup"] label{min-width:0!important;padding:.42rem .15rem!important;justify-content:center}
 div[role="radiogroup"] label p{font-size:.72rem!important;white-space:nowrap}
 .consensus-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.consensus{padding:13px}.lens{padding:9px}
+.score-card{height:auto!important;min-height:0!important;margin-bottom:14px!important}
 .scenario{height:auto!important;min-height:0!important;margin:0 0 14px!important;position:relative}
 }
 </style>""", unsafe_allow_html=True)
@@ -291,8 +292,8 @@ def render_entry_engine(snapshot, key):
                  column_config={"점수":st.column_config.ProgressColumn("점수",min_value=0,max_value=100,format="%.1f")},key=key)
     st.info(snapshot.interpretation)
 
-def briefing(title: str, body: str, kicker="AI BRIEF", wide=False):
-    cls="brief-card wide" if wide else "brief-card"
+def briefing(title: str, body: str, kicker="AI BRIEF", wide=False, matched=False):
+    cls="brief-card" + (" wide" if wide else "") + (" matched" if matched else "")
     st.markdown(f"<div class='{cls}'><div class='brief-kicker'>{kicker}</div><h3>{title}</h3><p>{body}</p></div>",unsafe_allow_html=True)
 
 def load_history():
@@ -551,9 +552,9 @@ if symbol and mode=="📊 종합분석":
     b3,b4=st.columns(2)
     with b3:
         m_view="시장 신호가 종목 선택을 뒷받침합니다." if a['market']>=65 else "시장 신호가 혼재해 종목 자체의 지지 확인이 더 중요합니다." if a['market']>=45 else "시장 위험 선호가 약해 개별 종목 신호보다 비중 관리가 우선입니다."
-        briefing("시장환경 브리핑",f"시장환경 점수는 {a['market']:.0f}점입니다. S&P 500·Nasdaq 100·SOX 방향, VIX, 위험자산과 신용시장을 종합했습니다. {m_view}","MARKET")
+        briefing("시장환경 브리핑",f"시장환경 점수는 {a['market']:.0f}점입니다. S&P 500·Nasdaq 100·SOX 방향, VIX, 위험자산과 신용시장을 종합했습니다. {m_view}","MARKET",matched=True)
     with b4:
-        briefing("추세·진입 브리핑",f"장기 추세 {a['long']:.0f}점, 단기 추세 {a['short']:.0f}점, 진입 적합도 {a['entry']:.0f}점입니다. 추천 진입 참고가격대와 가까운 지지에서 확인되는 반응을 보고 분할 접근하며 손절·무효화선을 지키는 것이 핵심입니다.","TREND & ENTRY")
+        briefing("추세·진입 브리핑",f"장기 추세 {a['long']:.0f}점, 단기 추세 {a['short']:.0f}점, 진입 적합도 {a['entry']:.0f}점입니다. 추천 진입 참고가격대와 가까운 지지에서 확인되는 반응을 보고 분할 접근하며 손절·무효화선을 지키는 것이 핵심입니다.","TREND & ENTRY",matched=True)
 
     st.subheader("장기 · 단기 추세 분석")
     st.write("50일선·200일선의 이격과 기울기, 6개월·12개월 수익률을 연속형으로 반영합니다.")
