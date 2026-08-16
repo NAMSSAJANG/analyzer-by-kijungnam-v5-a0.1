@@ -212,12 +212,13 @@ def trend_sparkline(trend, key):
     if len(trend.values) < 2:
         return
     color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
+    fill = "rgba(52,211,153,.10)" if trend.label == "Improving" else "rgba(251,113,133,.10)" if trend.label == "Weakening" else "rgba(251,191,36,.10)"
     x = list(range(1, len(trend.values) + 1))
     fig = go.Figure(go.Scatter(
         x=x, y=list(trend.values), mode="lines+markers",
         line=dict(color=color, width=3, shape="spline"),
         marker=dict(color=color, size=7, line=dict(color="#07111f", width=1)),
-        fill="tozeroy", fillcolor=color + "18",
+        fill="tozeroy", fillcolor=fill,
         hovertemplate="%{y:.1f}점<extra></extra>",
     ))
     low, high = min(trend.values), max(trend.values)
