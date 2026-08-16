@@ -35,7 +35,7 @@ st.markdown("""
 .block-container{padding-top:1.2rem;max-width:1440px}.small{color:#94a3b8;font-size:.86rem}.blue{color:#38bdf8;font-size:.9rem}
 .card{border:1px solid #29415e;border-radius:14px;padding:14px;background:#0d1b2d;min-height:132px}
 .badge{display:inline-block;padding:3px 9px;border-radius:99px;background:#102c46;color:#7dd3fc;font-weight:700}
-.brief-card{box-sizing:border-box;border:1px solid #29415e;border-radius:15px;padding:18px;background:#0d1b2d;height:100%;min-height:190px;color:#dbeafe}
+.brief-card{box-sizing:border-box;border:1px solid #29415e;border-radius:15px;padding:18px;background:#0d1b2d;height:calc(100% - 14px);min-height:190px;color:#dbeafe;margin-bottom:14px}
 .brief-card.wide{min-height:168px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
 .brief-card h3{color:#f8fafc;margin:.1rem 0 1rem;font-size:1.35rem}.brief-card p{line-height:1.8;margin:0;color:#dbeafe}
 .scenario{box-sizing:border-box;border-radius:12px;padding:16px;min-height:145px;height:145px;overflow:auto}.scenario h4{margin:0 0 16px}.scenario p{margin:0;line-height:1.75}
