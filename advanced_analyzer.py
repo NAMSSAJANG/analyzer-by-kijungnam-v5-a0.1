@@ -155,21 +155,22 @@ def _entry_decision(symbol,a,m,entry_score=None):
 
 def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,entry_snapshot=None):
     st.markdown("""<style>
-    .v4-hero{border:1px solid #29415e;border-radius:16px;padding:20px;background:#0d1b2d;margin-bottom:14px}.v4-hero h2{margin:.2rem 0 .8rem}.v4-hero p{color:#cbd5e1;line-height:1.75;margin:0}.v4-decision{border-top:1px solid #29415e;border-bottom:1px solid #29415e;padding:12px 0;margin:0 0 12px;display:flex;gap:18px;flex-wrap:wrap}.v4-decision b{color:#f8fafc}.v4-decision small{display:block;width:100%;color:#94a3b8;line-height:1.55}
-    .v4-factor{box-sizing:border-box;border:1px solid #29415e;border-radius:14px;padding:16px;background:#0d1b2d;height:230px;min-height:230px;margin-bottom:12px;overflow:auto}.v4-tag{display:inline-block;color:#7dd3fc;background:#123252;border-radius:7px;padding:4px 7px;margin-right:8px;font-size:.7rem}.v4-num{font-size:2rem;font-weight:850;text-align:center;margin:12px}.v4-track{height:7px;background:#223149;border-radius:99px;overflow:hidden}.v4-track div{height:100%;border-radius:99px}.v4-factor p{color:#aebdd0;font-size:.86rem;line-height:1.55}
+    .v4-hero{border:1px solid #29415e;border-radius:16px;padding:20px;background:#0d1b2d;margin-bottom:14px}.v4-hero h2{margin:.2rem 0 .6rem}.v4-hero p{color:#cbd5e1;line-height:1.75;margin:0}
+    .v4-factor{border:1px solid #29415e;border-radius:14px;padding:16px;background:#0d1b2d;min-height:180px;margin-bottom:12px}.v4-tag{display:inline-block;color:#7dd3fc;background:#123252;border-radius:7px;padding:4px 7px;margin-right:8px;font-size:.7rem}.v4-num{font-size:2rem;font-weight:850;text-align:center;margin:12px}.v4-track{height:7px;background:#223149;border-radius:99px;overflow:hidden}.v4-track div{height:100%;border-radius:99px}.v4-factor p{color:#aebdd0;font-size:.86rem;line-height:1.55}
     .v4-row{border:1px solid #29415e;border-left:3px solid #64748b;border-radius:11px;padding:13px 15px;margin:8px 0;background:#0d1b2d;display:flex;justify-content:space-between;gap:18px;align-items:center}.v4-row small{display:block;color:#8292a8;margin-top:4px}.v4-row strong{text-align:right;white-space:nowrap}.v4-row.good{border-left-color:#10b981}.v4-row.good strong{color:#34d399}.v4-row.bad{border-left-color:#ef4444}.v4-row.bad strong{color:#fb7185}
-    @media(max-width:900px){.v4-factor{height:auto;min-height:180px;overflow:visible}}
     </style>""",unsafe_allow_html=True)
     m=_metrics(a); inf=a["inf"]; name=inf.get("longName",symbol); entry_score=entry_snapshot.score if entry_snapshot else m["timing"]; decision=_entry_decision(symbol,a,m,entry_score)
     quality=_weighted([(a["fundamental"],.65),(_score(_safe(inf.get("revenueGrowth"))*100,-5,25),.2),(_score(_safe(inf.get("returnOnEquity"))*100,0,30),.15)])
-    verdict=decision["final"]
+    verdict=entry_snapshot.status if entry_snapshot else decision["final"]
     st.header(f"퀀트분석 · {name} ({symbol})")
-    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>ENTRY ENGINE V2 DECISION</div><h2>{verdict}</h2><div class='v4-decision'><span><b>기본 판정</b> · {decision['base']}</span><span>→</span><span><b>최종 판정</b> · {decision['final']}</span><small>기본 판정은 진입 적합도 점수 구간의 1차 결과이며, 최종 판정은 과열·가격 위치·거래량·시장환경·손실 허용폭·실적 일정을 반영한 보정 결과입니다.</small></div><p>기업 종합점수는 {quality:.1f}점, 공통 진입 적합도는 {entry_score:.1f}점입니다. 좋은 기업과 좋은 매수 시점은 별도로 평가합니다. 현재가는 52주 고점보다 {(a['now']/m['high52']-1)*100:.1f}% 위치이며 RSI는 {m['rsi']:.1f}입니다.</p></div>",unsafe_allow_html=True)
+    trend_strength=entry_snapshot.trend_strength if entry_snapshot else m["trend"]
+    st.markdown(f"<div class='v4-hero'><div class='brief-kicker'>ENTRY ENGINE V2 DECISION</div><h2>{verdict} · {entry_score:.1f}점</h2><p>Trend Strength {trend_strength:.1f}점과 Entry Timing {entry_score:.1f}점을 분리했습니다. 기업 종합점수 {quality:.1f}점은 기존 산식을 유지합니다. RSI {m['rsi']:.1f}는 단독 보류 조건이 아닙니다.</p></div>",unsafe_allow_html=True)
     c1,c2=st.columns(2)
     with c1:
         st.subheader("기업 종합점수"); _bar_card("기업 품질",quality,"성장성·수익성·재무안정성과 밸류에이션을 종합합니다.",color_fn,"QUALITY")
     with c2:
         st.subheader("진입 타이밍"); _bar_card("현재 진입 여건",entry_score,"Entry Engine v2의 6개 공통 요소를 반영합니다.",color_fn,"ENTRY V2")
+        st.markdown(f"**기본 판정:** {decision['base']}  \n**최종 판정:** {decision['final']}")
     if decision["risks"]:
         left,right=st.columns(2)
         with left: st.warning("**판정을 낮춘 위험 조건**\n\n"+"\n\n".join(f"• {x}" for x in decision["risks"]))
@@ -199,46 +200,23 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
     st.caption("원형 C·A·N·S·L·I·M과 보조 퀀트 지표를 분리했습니다. 데이터가 없는 항목은 총점 계산에서 제외합니다.")
     cols=st.columns(2)
     can_desc={"C":"최근 EPS 성장","A":"연간 수익성·ROE","N":"신고가·새로운 모멘텀","S":"거래량 수급","L":"시장 주도력","I":"기관 수급 대용지표","M":"시장 방향"}
-    can_guide={
-        "C":"최근 EPS 성장률입니다. 높을수록 이익 증가가 강하지만, 극단값은 기저효과·일회성 이익을 확인해야 합니다.",
-        "A":"ROE를 중심으로 연간 수익성을 봅니다. 높을수록 자본 효율이 좋지만 부채로 높아진 ROE인지 함께 확인합니다.",
-        "N":"신고가 접근도와 추세를 결합합니다. 높을수록 새로운 상승 모멘텀이 강하지만 추격 매수 위험도 확인합니다.",
-        "S":"최근 거래량이 평균보다 활발한지 봅니다. 상승과 동반된 거래량 증가는 신호 확인에 도움이 됩니다.",
-        "L":"장기·중기 가격 추세의 주도력을 나타냅니다. 높을수록 시장 대비 강한 흐름일 가능성이 큽니다.",
-        "I":"거래량·VWAP·OBV로 기관 수급을 간접 추정합니다. 실제 기관 보유 자료가 아닌 대용지표입니다.",
-        "M":"시장환경 점수입니다. 높을수록 시장이 개별 종목 상승을 뒷받침하는 환경으로 해석합니다.",
-    }
     for i,(k,v) in enumerate(can.items()):
         with cols[i%2]:
-            if np.isfinite(v): _bar_card(f"{k} · {can_desc[k]}",v,can_guide[k],color_fn,"CAN SLIM")
+            if np.isfinite(v): _bar_card(f"{k} · {can_desc[k]}",v,f"{can_desc[k]} 관련 확인 가능한 공개 데이터를 반영했습니다.",color_fn,"CAN SLIM")
             else: st.info(f"{k} · {can_desc[k]}: 데이터 없음 — 총점에서 제외")
-    with st.expander("CAN SLIM 점수 읽는 법",expanded=False):
-        st.markdown("**공통 기준** · 50점은 중립, 65점 이상은 우호적, 80점 이상은 강한 신호로 봅니다. 한 항목의 고득점보다 여러 항목이 함께 개선되는지가 중요합니다.")
-        st.caption("CAN SLIM 점수는 공개 데이터 기반의 상대적 상태 표시이며, 원자료의 시차·누락·일회성 변동이 있을 수 있습니다.")
 
     with st.expander("보조 퀀트 지표",expanded=False):
         quant={"평균회귀":float(np.clip(50-m['z']*18,0,100)),"모멘텀":m['momentum'],"다중 시간대":m['trend'],"낙폭 위험도":float(np.clip(100-abs(min(0,(a['now']/m['high52']-1)*100))*1.2,0,100)),"스마트머니 흐름":m['supply'],"Target Price Factor":float(np.clip(50+(a['resist'][-1]/a['now']-1)*180,0,100)),"통계적 Z-Score":float(np.clip(50-m['z']*15,0,100)),"변동성 조정":m['volatility']}
-        quant_guide={
-            "평균회귀":"최근 평균에서 벗어난 정도입니다. 50은 중립, 높을수록 평균 아래여서 반등 여지, 낮을수록 평균 위여서 과열 가능성을 뜻합니다.",
-            "모멘텀":"RSI·MACD·3개월 수익률을 결합합니다. 높을수록 상승 속도가 강하지만 과열 여부를 함께 봐야 합니다.",
-            "다중 시간대":"단기·중기·장기 추세의 정렬 정도입니다. 높을수록 여러 시간대가 같은 상승 방향을 가리킵니다.",
-            "낙폭 위험도":"52주 고점 대비 위치를 점수화합니다. 높을수록 고점과 가까워 기존 낙폭 부담이 작다는 뜻이며 미래 하락 위험을 보장하지 않습니다.",
-            "스마트머니 흐름":"거래량·VWAP·OBV 기반의 수급 대용지표입니다. 높을수록 누적 매수 흐름이 우호적이라는 의미입니다.",
-            "Target Price Factor":"현재가에서 저항 참고선까지의 여유를 점수화합니다. 높을수록 잠재 여유가 크지만 공식 목표주가는 아닙니다.",
-            "통계적 Z-Score":"가격이 최근 평균에서 몇 표준편차 떨어졌는지 변환한 점수입니다. 50은 평균 부근, 낮을수록 평균보다 높은 위치입니다.",
-            "변동성 조정":"ATR 기반 가격 안정성입니다. 높을수록 변동성이 낮고, 낮을수록 손절 폭과 비중을 보수적으로 잡아야 합니다.",
-        }
-        st.caption("보조 점수는 50을 중립으로 읽습니다. 방향 확인용이며 단독 매수·매도 신호로 사용하지 않습니다.")
         cols=st.columns(2)
         for i,(k,v) in enumerate(quant.items()):
-            with cols[i%2]:_bar_card(k,v,quant_guide[k],color_fn,"QUANT")
+            with cols[i%2]:_bar_card(k,v,"보조 판단 지표이며 단독 매수 신호로 사용하지 않습니다.",color_fn,"QUANT")
 
     st.subheader("기술 지표")
-    tech=[("RSI (14)",_fmt(m['rsi']),"0~100 강도 지표 · 70↑ 과열, 30↓ 과매도, 40~65 중립권. 과열이 즉시 매도를 뜻하지는 않습니다.","bad" if m['rsi']>70 else "good" if 40<=m['rsi']<=65 else "neutral"),("ADX",_fmt(m['adx']),"추세의 방향이 아닌 강도 · 25↑ 추세 존재, 40↑ 강한 추세","good" if m['adx']>=25 else "neutral"),("ATR%",_fmt(m['atr_pct'],"%",2),"평균 가격 변동폭 · 높을수록 변동성과 필요한 손절 여유가 큽니다.","bad" if m['atr_pct']>6 else "neutral"),("VWAP 거리",_fmt((a['now']/m['vwap']-1)*100,"%"),"양수는 누적 평균가격 위 · 지나치게 크면 추격 진입 위험을 확인합니다.","good" if a['now']>=m['vwap'] else "bad"),("12M 수익률",_fmt(m['ret12'],"%"),"장기 상대강도 · 극단값은 액면분할·데이터 조정 여부를 확인합니다.","good" if m['ret12']>0 else "bad"),("3M 수익률",_fmt(m['ret3'],"%"),"최근 약 3개월의 단기 추세 · 12개월 흐름과 같은 방향인지 비교합니다.","good" if m['ret3']>0 else "bad"),("거래량 비율",_fmt(m['vol_ratio'],"x",2),"20일 평균 대비 거래량 · 1배는 평균, 1.2배 이상은 비교적 활발합니다.","good" if m['vol_ratio']>=1.2 else "neutral"),("MACD 방향","상승" if m['macd']>m['signal'] else "하락","MACD가 시그널 위면 상승 모멘텀 우세 · 횡보장에서는 잦은 반전 가능","good" if m['macd']>m['signal'] else "bad")]
+    tech=[("RSI (14)",_fmt(m['rsi']),"70↑ 과매수 · 30↓ 과매도","bad" if m['rsi']>70 else "good" if 40<=m['rsi']<=65 else "neutral"),("ADX",_fmt(m['adx']),"25↑ 추세 존재 · 40↑ 강한 추세","good" if m['adx']>=25 else "neutral"),("ATR%",_fmt(m['atr_pct'],"%",2),"높을수록 변동성 큼","bad" if m['atr_pct']>6 else "neutral"),("VWAP 거리",_fmt((a['now']/m['vwap']-1)*100,"%"),"양수는 누적 평균가격 위","good" if a['now']>=m['vwap'] else "bad"),("12M 수익률",_fmt(m['ret12'],"%"),"장기 상대강도 참고","good" if m['ret12']>0 else "bad"),("3M 수익률",_fmt(m['ret3'],"%"),"단기 추세 확인","good" if m['ret3']>0 else "bad"),("거래량 비율",_fmt(m['vol_ratio'],"x",2),"1↑ 평균보다 활발","good" if m['vol_ratio']>=1.2 else "neutral"),("MACD 방향","상승" if m['macd']>m['signal'] else "하락","MACD와 시그널 비교","good" if m['macd']>m['signal'] else "bad")]
     for x in tech:_status_row(*x)
 
     st.subheader("재무 지표")
-    financial=[("PER",_fmt(_safe(inf.get('trailingPE'))),"주가÷주당이익 · 낮다고 항상 저평가는 아니며 업종·성장률과 비교합니다."),("PBR",_fmt(_safe(inf.get('priceToBook'))),"주가÷주당순자산 · 자산 구조가 다른 업종끼리 단순 비교하지 않습니다."),("ROE",_fmt(roe,"%"),"자기자본 수익성 · 17% 이상을 우수 참고하되 부채 효과를 함께 확인합니다."),("EPS 성장률",_fmt(eps_growth,"%"),"주당이익의 최근 공개 성장률 · 고성장은 긍정적이나 기저효과·일회성 이익을 확인합니다."),("매출 성장률",_fmt(rev_growth,"%"),"최근 공개 매출 증가율 · 이익 성장과 함께 나타나는지 확인합니다."),("영업이익률",_fmt(_safe(inf.get('operatingMargins'))*100,"%"),"매출에서 영업이익이 차지하는 비율 · 높고 안정적일수록 본업 수익성이 좋습니다."),("부채비율",_fmt(_safe(inf.get('debtToEquity')),"%"),"자기자본 대비 부채 · 낮을수록 일반적으로 안정적이나 업종별 기준이 다릅니다."),("시가총액",_fmt(_safe(inf.get('marketCap'))/1e9,"B"),"기업의 시장가치 · 통화 단위는 Yahoo 원자료 기준입니다.")]
+    financial=[("PER",_fmt(_safe(inf.get('trailingPE'))),"업종과 성장률을 함께 비교"),("PBR",_fmt(_safe(inf.get('priceToBook'))),"자산 대비 가격"),("ROE",_fmt(roe,"%"),"17% 이상 우수 참고"),("EPS 성장률",_fmt(eps_growth,"%"),"최근 공개 성장률"),("매출 성장률",_fmt(rev_growth,"%"),"양수는 매출 확장"),("영업이익률",_fmt(_safe(inf.get('operatingMargins'))*100,"%"),"사업 수익성"),("부채비율",_fmt(_safe(inf.get('debtToEquity')),"%"),"업종별 적정 수준 상이"),("시가총액",_fmt(_safe(inf.get('marketCap'))/1e9,"B"),"통화 단위는 Yahoo 원자료 기준")]
     for label,val,guide in financial:
         tone="neutral" if val=="—" else "good" if label in ("ROE","EPS 성장률","매출 성장률") and not val.startswith("-") else "neutral"
         _status_row(label,val,guide,tone)
@@ -270,3 +248,4 @@ def render_advanced(symbol,a,prices_fn,news_fn,money,pct,clamp,grade,color_fn,en
         for title,summary,url in rows[:5]:
             st.markdown(f"[{title}]({url})" if url else title); st.caption(summary[:180] if summary else "제목 기반 참고 뉴스")
     st.warning("기관 수급·컨센서스·공매도·한국 공시는 무료 Yahoo 데이터에서 누락될 수 있습니다. 없는 데이터는 임의 추정하지 않으며, DART 정식 공시는 별도 API 키 연동이 필요합니다.")
+

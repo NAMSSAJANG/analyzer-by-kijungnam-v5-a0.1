@@ -18,7 +18,6 @@ import yfinance as yf
 
 from consensus_engine import Lens, build_consensus, confidence_interpretation
 from entry_engine import build_entry_snapshot
-from korean_stock_search import contains_hangul, load_krx_listing, search_krx_listing
 from score_history import JsonScoreHistory, format_trend
 
 st.set_page_config(page_title="Stock Analyzer V5-a0.1", page_icon="📈", layout="wide")
@@ -50,9 +49,8 @@ st.markdown("""
 .card{border:1px solid #29415e;border-radius:14px;padding:14px;background:#0d1b2d;min-height:132px}
 .badge{display:inline-block;padding:3px 9px;border-radius:99px;background:#102c46;color:#7dd3fc;font-weight:700}
 .brief-card{box-sizing:border-box;border:1px solid #29415e;border-radius:15px;padding:18px;background:#0d1b2d;height:calc(100% - 14px);min-height:190px;color:#dbeafe;margin-bottom:14px}
-.brief-card.wide{min-height:168px}.brief-card.matched{height:220px;min-height:220px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
+.brief-card.wide{min-height:168px}.brief-kicker{color:#38bdf8;font-size:.72rem;font-weight:800;letter-spacing:.16em;margin-bottom:8px}
 .brief-card h3{color:#f8fafc;margin:.1rem 0 1rem;font-size:1.35rem}.brief-card p{line-height:1.8;margin:0;color:#dbeafe}
-.factor-card{box-sizing:border-box;border-radius:12px;padding:18px 20px;height:170px;margin-bottom:14px;font-size:1rem;line-height:1.75}.factor-card h4{margin:0 0 14px;font-size:1.12rem}.factor-card.positive{background:#103c30;color:#6ee7b7}.factor-card.caution{background:#3b431c;color:#fef08a}
 .scenario{box-sizing:border-box;border-radius:12px;padding:16px;min-height:145px;height:145px;overflow:auto}.scenario h4{margin:0 0 16px}.scenario p{margin:0;line-height:1.75}
 .up{background:#103c30;color:#6ee7b7}.mid{background:#102d4d;color:#7dd3fc}.down{background:#451d28;color:#fda4af}
 .score-card{box-sizing:border-box;border:1px solid #29415e;border-radius:16px;padding:18px 18px 16px;background:#0d1b2d;min-height:150px;height:100%}
@@ -64,8 +62,7 @@ st.markdown("""
 [data-testid="stMetricValue"]{font-size:clamp(1.55rem,3vw,2.35rem);white-space:normal;overflow-wrap:anywhere}
 [data-testid="stMetricLabel"]{color:#cbd5e1} [data-testid="stExpander"]{border-color:#29415e;background:#0a1728}
 [data-testid="stAlert"]{border-radius:12px} div[data-testid="stPlotlyChart"]{overflow:hidden}
-@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide,.brief-card.matched,.factor-card{height:auto;min-height:0}.scenario{height:auto;min-height:130px}}
-@media(min-width:901px){div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]){align-items:stretch}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]{display:flex}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stColumn"]>div{width:100%}div[data-testid="stHorizontalBlock"]:has([data-testid="stAlert"]) [data-testid="stAlert"]{box-sizing:border-box;height:100%}}
+@media(max-width:900px){.block-container{padding-left:1rem;padding-right:1rem}.brief-card,.brief-card.wide{min-height:0}.scenario{height:auto;min-height:130px}}
 @media(max-width:700px){
 html,body,#root{
   height:auto!important;min-height:100%!important;overflow:visible!important;background:#07111f!important
@@ -80,8 +77,6 @@ div[role="radiogroup"]{display:grid!important;grid-template-columns:repeat(4,min
 div[role="radiogroup"] label{min-width:0!important;padding:.42rem .15rem!important;justify-content:center}
 div[role="radiogroup"] label p{font-size:.72rem!important;white-space:nowrap}
 .consensus-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.consensus{padding:13px}.lens{padding:9px}
-.score-card{height:auto!important;min-height:0!important;margin-bottom:14px!important}
-.scenario{height:auto!important;min-height:0!important;margin:0 0 14px!important;position:relative}
 }
 </style>""", unsafe_allow_html=True)
 
@@ -104,8 +99,18 @@ def money(v):
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def krx_listing():
-    """한국거래소 목록을 단계별 원격 소스와 내장 안전망에서 불러옵니다."""
-    return load_krx_listing()
+    """한국거래소 상장 종목 목록. 실패 시 빈 표를 반환해 Yahoo 검색을 계속 사용합니다."""
+    try:
+        import FinanceDataReader as fdr
+        df=fdr.StockListing("KRX")
+        code_col=next((x for x in ("Code","Symbol") if x in df.columns),None)
+        if code_col is None or "Name" not in df.columns: return pd.DataFrame()
+        keep=[code_col,"Name"]+(["Market"] if "Market" in df.columns else [])
+        out=df[keep].copy().rename(columns={code_col:"Code"})
+        out["Code"]=out["Code"].astype(str).str.zfill(6); out["Name"]=out["Name"].astype(str)
+        if "Market" not in out: out["Market"]="KRX"
+        return out
+    except Exception: return pd.DataFrame(columns=["Code","Name","Market"])
 
 @st.cache_data(ttl=300, show_spinner=False)
 def search_yahoo(q: str):
@@ -113,18 +118,22 @@ def search_yahoo(q: str):
     if not q: return []
     merged=[]
     # 한글 회사명과 6자리 종목코드는 KRX 목록을 우선 검색합니다.
-    is_hangul=contains_hangul(q)
-    if is_hangul or re.fullmatch(r"\d{1,6}",q):
+    if re.search(r"[가-힣]",q) or re.fullmatch(r"\d{1,6}",q):
         try:
-            merged.extend(search_krx_listing(q,krx_listing()))
+            listing=krx_listing(); normalized=q.zfill(6) if q.isdigit() else q
+            if q.isdigit(): mask=listing["Code"].str.startswith(normalized)
+            else: mask=listing["Name"].str.contains(q,case=False,regex=False)
+            for _,row in listing[mask].head(10).iterrows():
+                market=str(row.get("Market","KRX")); suffix=".KQ" if "KOSDAQ" in market.upper() else ".KS"
+                merged.append({"symbol":f"{row['Code']}{suffix}","name":row["Name"],"exchange":market,"type":"Equity"})
         except Exception: pass
     try:
         data=requests.get("https://query2.finance.yahoo.com/v1/finance/search",params={"q":q,"quotesCount":10,"newsCount":0},headers={"User-Agent":"Mozilla/5.0"},timeout=8).json()
-        merged.extend({"symbol":x.get("symbol"),"name":x.get("longname") or x.get("shortname") or x.get("symbol"),"exchange":x.get("exchDisp",""),"type":x.get("quoteType","")} for x in data.get("quotes",[]) if x.get("symbol") and not contains_hangul(x.get("symbol")))
+        merged.extend({"symbol":x.get("symbol"),"name":x.get("longname") or x.get("shortname") or x.get("symbol"),"exchange":x.get("exchDisp",""),"type":x.get("quoteType","")} for x in data.get("quotes",[]) if x.get("symbol"))
     except Exception: pass
     if not merged and re.fullmatch(r"\d{6}",q):
         merged=[{"symbol":f"{q}.KS","name":f"한국 종목 {q}","exchange":"KOSPI 후보","type":"Equity"},{"symbol":f"{q}.KQ","name":f"한국 종목 {q}","exchange":"KOSDAQ 후보","type":"Equity"}]
-    if not merged and not is_hangul: merged=[{"symbol":q.upper(),"name":q.upper(),"exchange":"직접 입력","type":""}]
+    if not merged: merged=[{"symbol":q.upper(),"name":q.upper(),"exchange":"직접 입력","type":""}]
     seen=set(); unique=[]
     for row in merged:
         if row["symbol"] not in seen: seen.add(row["symbol"]); unique.append(row)
@@ -257,7 +266,7 @@ def trend_sparkline(trend, key):
     color = "#34d399" if trend.label == "Improving" else "#fb7185" if trend.label == "Weakening" else "#fbbf24"
     fill = "rgba(52,211,153,.10)" if trend.label == "Improving" else "rgba(251,113,133,.10)" if trend.label == "Weakening" else "rgba(251,191,36,.10)"
     # Categorical positions keep every trading-day observation equally spaced;
-    # weekends and holidays should not create visual gaps in a score trend.
+    # weekends and holidays should not create visual gaps in a 5D score trend.
     x = list(range(len(trend.values)))
     ticktext = [pd.Timestamp(date).strftime("%m.%d") for date in trend.dates] if len(trend.dates) == len(trend.values) else [str(value + 1) for value in x]
     fig = go.Figure(go.Scatter(
@@ -284,7 +293,10 @@ def trend_sparkline(trend, key):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
 
 def render_entry_engine(snapshot, key):
-    st.markdown(f"### ENTRY ENGINE V2 · {snapshot.score:.1f} / 100 · {grade(snapshot.score)}")
+    st.markdown(f"### ENTRY ENGINE V2 · {snapshot.status}")
+    left,right=st.columns(2)
+    left.metric("Trend Strength · 추세 강도",f"{snapshot.trend_strength:.1f} / 100")
+    right.metric("Entry Timing · 진입 타이밍",f"{snapshot.score:.1f} / 100",snapshot.allocation)
     labels={"Trend":"추세","Price Position":"가격 위치","Momentum":"모멘텀","Volume / OBV":"거래량 / OBV","Volatility":"변동성","Market":"시장환경"}
     rows=[]
     for name,value in snapshot.factors.items():
@@ -293,9 +305,10 @@ def render_entry_engine(snapshot, key):
     st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
                  column_config={"점수":st.column_config.ProgressColumn("점수",min_value=0,max_value=100,format="%.1f")},key=key)
     st.info(snapshot.interpretation)
+    st.dataframe(pd.DataFrame(snapshot.plan,columns=["단계","확인 조건","허용 비중"]),hide_index=True,use_container_width=True,key=f"{key}_plan")
 
-def briefing(title: str, body: str, kicker="AI BRIEF", wide=False, matched=False):
-    cls="brief-card" + (" wide" if wide else "") + (" matched" if matched else "")
+def briefing(title: str, body: str, kicker="AI BRIEF", wide=False):
+    cls="brief-card wide" if wide else "brief-card"
     st.markdown(f"<div class='{cls}'><div class='brief-kicker'>{kicker}</div><h3>{title}</h3><p>{body}</p></div>",unsafe_allow_html=True)
 
 def load_history():
@@ -327,13 +340,12 @@ def render_market_dashboard():
     with c3:
         brief = "위험자산 흐름이 우호적입니다. 추세 확인 후 분할 접근이 유리합니다." if mh>=65 else "시장 방향성이 혼재합니다. 종목별 지지 확인과 비중 관리가 중요합니다." if mh>=45 else "시장 위험 선호가 약합니다. 현금 비중과 무효화 기준을 보수적으로 관리하세요."
         st.markdown("**AI Market Brief**"); st.info(brief)
-    st.subheader("MARKET HEALTH · 최근 10영업일 차트")
+    st.subheader("MARKET HEALTH · 최근 5영업일")
     market_history_trend=HISTORY_STORE.recent("__MARKET__", "market")
-    market_chart_trend=HISTORY_STORE.recent("__MARKET__", "market", count=10)
     st.markdown(format_trend(market_history_trend))
-    trend_sparkline(market_chart_trend, "market_10d_sparkline")
+    trend_sparkline(market_history_trend, "market_5d_sparkline")
     with st.expander("Market Pulse 12",expanded=False):
-        st.caption("작은 선 그래프는 마지막 거래일의 15분 단위 장중 흐름입니다. Market Health 차트는 최근 10영업일, 변화량과 Trend 판단은 최근 5영업일 기준입니다.")
+        st.caption("작은 선 그래프는 마지막 거래일의 15분 단위 장중 흐름입니다. 아래 Market Health 5D는 최근 5영업일의 일별 시장점수 변화입니다.")
         items=list(PULSE.items())
         for i in range(0,12,4):
             cols=st.columns(4)
@@ -421,7 +433,7 @@ if symbol:
                 option_view, _, _, _ = get_option_snapshot(symbol, analysis["now"])
             except Exception:
                 option_view = None
-            # 5D 판단은 유지하면서 차트에는 10영업일을 보여줄 수 있도록 누락 데이터를 역산합니다.
+            # 첫 조회에서도 5D 방향을 볼 수 있도록 누락된 최근 거래일을 가격·시장 데이터로 역산합니다.
             valid_trading_dates = {pd.Timestamp(x).date().isoformat() for x in analysis["data"].index}
             HISTORY_STORE.retain_valid_dates(symbol, valid_trading_dates)
             try:
@@ -430,7 +442,7 @@ if symbol:
             except Exception:
                 pass
             existing_dates = HISTORY_STORE.dates(symbol)
-            recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-10:]]
+            recent_dates = [pd.Timestamp(x).date() for x in analysis["data"].index[-5:]]
             for historical_date in recent_dates[:-1]:
                 if historical_date.isoformat() in existing_dates:
                     continue
@@ -506,11 +518,10 @@ if symbol and mode=="🎯 퀀트분석":
         from advanced_analyzer import render_advanced
         with st.spinner(f"{symbol}의 퀀트 데이터를 분석하는 중입니다..."): advanced_base=analysis or calc(symbol)
         if quant_view:
-            st.subheader("QUANT SCORE · 최근 10영업일 차트")
+            st.subheader("QUANT SCORE · 최근 5영업일")
             quant_history_trend=HISTORY_STORE.recent(symbol, "quant")
-            quant_chart_trend=HISTORY_STORE.recent(symbol, "quant", count=10)
             st.markdown(format_trend(quant_history_trend))
-            trend_sparkline(quant_chart_trend, f"quant_10d_sparkline_{symbol}")
+            trend_sparkline(quant_history_trend, f"quant_5d_sparkline_{symbol}")
             st.caption(f"현재 {quant_view['score']:.1f} {grade(quant_view['score'])} · 추세 {quant_view['trend']:.1f} · 모멘텀 {quant_view['momentum']:.1f} · 수급 {quant_view['supply']:.1f} · 기업품질 {quant_view['quality']:.1f}")
         if entry_view: render_entry_engine(entry_view, f"quant_entry_v2_{symbol}")
         render_advanced(symbol,advanced_base,prices,news,money,pct,clamp,grade,score_color,entry_view)
@@ -525,22 +536,19 @@ if symbol and mode=="📊 종합분석":
     cols=st.columns(4)
     for col,(label,key) in zip(cols,[("종합점수","total"),("펀더멘털","fundamental"),("테크니컬","technical"),("시장환경","market")]):
         with col:gauge(label,a[key])
-    st.subheader("종합점수 · 최근 10영업일 차트")
+    st.subheader("종합점수 · 최근 5영업일")
     overall_history_trend=HISTORY_STORE.recent(symbol, "overall")
-    overall_chart_trend=HISTORY_STORE.recent(symbol, "overall", count=10)
     st.markdown(format_trend(overall_history_trend))
-    trend_sparkline(overall_chart_trend, f"overall_10d_sparkline_{symbol}")
+    trend_sparkline(overall_history_trend, f"overall_5d_sparkline_{symbol}")
     if any(row.get("source") == "reconstructed" for row in HISTORY_STORE.recent_rows(symbol)):
         st.caption("가격 기반 역산 포함 · 현재 펀더멘털 고정, 과거 기술·시장 데이터 재계산")
     positives=[]; cautions=[]
     (positives if a['long']>=65 else cautions).append(f"장기 추세 {grade(a['long'])} ({a['long']:.0f})")
     (positives if a['short']>=65 else cautions).append(f"단기 추세 {grade(a['short'])} ({a['short']:.0f})")
     (positives if a['fundamental']>=65 else cautions).append(f"펀더멘털 {grade(a['fundamental'])}")
-    positive_html="<br>".join(f"• {z}" for z in positives) if positives else "• 뚜렷한 우위 요인을 추가 확인하세요."
-    caution_html="<br>".join(f"• {z}" for z in cautions) if cautions else "• 현재 모델상 두드러진 약점이 적습니다."
     x,y=st.columns(2)
-    with x: st.markdown(f"<div class='factor-card positive'><h4>긍정 요인</h4>{positive_html}</div>",unsafe_allow_html=True)
-    with y: st.markdown(f"<div class='factor-card caution'><h4>주의 요인</h4>{caution_html}</div>",unsafe_allow_html=True)
+    with x: st.success("**긍정 요인**\n\n"+"\n\n".join(f"• {z}" for z in positives) if positives else "뚜렷한 우위 요인을 추가 확인하세요.")
+    with y: st.warning("**주의 요인**\n\n"+"\n\n".join(f"• {z}" for z in cautions) if cautions else "현재 모델상 두드러진 약점이 적습니다.")
     st.info(f"종합점수는 펀더멘털 38%, 테크니컬 42%, 시장환경 20%를 반영합니다. 현재 {a['total']:.1f}점({grade(a['total'])})입니다.")
 
     st.subheader("AI 종합 브리핑")
@@ -556,9 +564,9 @@ if symbol and mode=="📊 종합분석":
     b3,b4=st.columns(2)
     with b3:
         m_view="시장 신호가 종목 선택을 뒷받침합니다." if a['market']>=65 else "시장 신호가 혼재해 종목 자체의 지지 확인이 더 중요합니다." if a['market']>=45 else "시장 위험 선호가 약해 개별 종목 신호보다 비중 관리가 우선입니다."
-        briefing("시장환경 브리핑",f"시장환경 점수는 {a['market']:.0f}점입니다. S&P 500·Nasdaq 100·SOX 방향, VIX, 위험자산과 신용시장을 종합했습니다. {m_view}","MARKET",matched=True)
+        briefing("시장환경 브리핑",f"시장환경 점수는 {a['market']:.0f}점입니다. S&P 500·Nasdaq 100·SOX 방향, VIX, 위험자산과 신용시장을 종합했습니다. {m_view}","MARKET")
     with b4:
-        briefing("추세·진입 브리핑",f"장기 추세 {a['long']:.0f}점, 단기 추세 {a['short']:.0f}점, 진입 적합도 {a['entry']:.0f}점입니다. 추천 진입 참고가격대와 가까운 지지에서 확인되는 반응을 보고 분할 접근하며 손절·무효화선을 지키는 것이 핵심입니다.","TREND & ENTRY",matched=True)
+        briefing("추세·진입 브리핑",f"장기 추세 {a['long']:.0f}점, 단기 추세 {a['short']:.0f}점, 진입 적합도 {a['entry']:.0f}점입니다. 추천 진입 참고가격대와 가까운 지지에서 확인되는 반응을 보고 분할 접근하며 손절·무효화선을 지키는 것이 핵심입니다.","TREND & ENTRY")
 
     st.subheader("장기 · 단기 추세 분석")
     st.write("50일선·200일선의 이격과 기울기, 6개월·12개월 수익률을 연속형으로 반영합니다.")
@@ -567,17 +575,15 @@ if symbol and mode=="📊 종합분석":
     with c2: gauge("단기 추세",a["short"]); st.caption(a["short_reason"])
     st.markdown("<p class='blue'>점수가 50에 가까우면 방향이 불분명하며, 65 이상은 상승 우위, 35 이하는 하락 우위로 해석합니다.</p>",unsafe_allow_html=True)
 
-    st.subheader("진입 적합도 · AI 눌림목 전략")
+    st.subheader("진입 적합도 · 눌림목 + 모멘텀 전략")
     if entry_view: render_entry_engine(entry_view, f"overall_entry_v2_{symbol}")
     c1,c2,c3=st.columns(3)
     entry_score=entry_view.score if entry_view else a["entry"]
     with c1:gauge("진입 적합도",entry_score)
     lo,hi=a["entry_range"]; stop=max(a["supports"][-1],lo-a["atr"]*1.3); target=max(a["resist"][-1],a["now"]+a["atr"]*2)
     c2.metric("추천 진입가격대",f"{money(lo)} ~ {money(hi)}"); c2.metric("현재 위치",f"추천구간 대비 {(a['now']/((lo+hi)/2)-1)*100:+.1f}%")
-    weight=30 if entry_score>=65 else 20 if entry_score>=45 else 10
-    c3.metric("추천비중",f"최대 {weight}%"); c3.caption("AI 눌림목: 20일선·ATR·가까운 지지를 결합해 과도한 추격 여부를 평가합니다.")
-    plans=pd.DataFrame({"단계":["1차","2차","3차"],"가격":[hi,(lo+hi)/2,lo],"해당 계획 내 비중":["30%","30%","40%"]})
-    st.dataframe(plans.style.format({"가격":"{:,.2f}"}),hide_index=True,use_container_width=True)
+    weight_text=entry_view.allocation if entry_view else ("최대 30%" if entry_score>=65 else "최대 20%" if entry_score>=45 else "최대 10%")
+    c3.metric("진입 운영",weight_text); c3.caption("판정 경로에 따라 눌림목 분할, 모멘텀 확인 매수, 소액 시험 진입을 구분합니다.")
     st.write(f"손절/무효화 참고선 **{money(stop)}** · 목표 참고선 **{money(target)}**")
     st.caption(f"진입 적합도 근거: 추천구간과 현재가 거리, ATR 변동성, 테크니컬 점수를 결합했습니다. 현재 RSI {a['rsi']:.1f}, ATR {a['atr']:.2f}.")
 
